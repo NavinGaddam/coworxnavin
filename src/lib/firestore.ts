@@ -1,7 +1,16 @@
 import {addDoc,collection,doc,getDoc,getDocs,limit,onSnapshot,query,serverTimestamp,setDoc,Timestamp,updateDoc,where,runTransaction} from "firebase/firestore";
 import {db} from "../firebase";
 import {ADMIN_EMAIL,DEFAULT_PRICING,Offer,Booking,Space,emailKey} from "../pages/types";
-export function watchUser(uid:string,cb:(b:Booking[])=>void){return onSnapshot(query(collection(db,"bookings"),where("userId","==",uid)),s=>cb(s.docs.map(d=>({id:d.id,...d.data()} as Booking))));}
+
+const clean=(obj:any)=>Object.fromEntries(Object.entries(obj).filter(([,v])=>v!==undefined));
+
+export function watchUser(uid:string,email:string,cb:(b:Booking[])=>void){
+  let byUid:Booking[]=[];let byEmail:Booking[]=[];
+  const emit=()=>{const m=new Map<string,Booking>();[...byUid,...byEmail].forEach(b=>m.set(b.id,b));cb([...m.values()].sort((a:any,b:any)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0))) };
+  const a=onSnapshot(query(collection(db,"bookings"),where("userId","==",uid)),s=>{byUid=s.docs.map(d=>({id:d.id,...d.data()} as Booking));emit()});
+  const b=onSnapshot(query(collection(db,"bookings"),where("customerEmail","==",email.toLowerCase())),s=>{byEmail=s.docs.map(d=>({id:d.id,...d.data()} as Booking));emit()});
+  return ()=>{a();b()};
+}
 export function watchAllBookings(cb:(b:Booking[])=>void){return onSnapshot(query(collection(db,"bookings"),limit(300)),s=>cb(s.docs.map(d=>({id:d.id,...d.data()} as Booking))));}
 export function watchOffers(email:string,cb:(o:Offer[])=>void){return onSnapshot(query(collection(db,"offers"),where("active","==",true),limit(100)),s=>{const e=email.toLowerCase();cb(s.docs.map(d=>({id:d.id,...d.data()} as Offer)).filter(o=>o.targetType==="all"||(o.targetEmail||"").toLowerCase()===e));});}
 export function watchRoleAssignment(email:string,cb:(a:any)=>void){return onSnapshot(doc(db,"roleAssignments",emailKey(email)),s=>cb(s.exists()?{id:s.id,...s.data()}:null));}
@@ -12,4 +21,11 @@ export async function assignManager(email:string,uid:string){const e=email.trim(
 export async function acceptManager(a:any,uid:string){await updateDoc(doc(db,"roleAssignments",a.id),{status:"accepted",acceptedAt:serverTimestamp()});await updateDoc(doc(db,"users",uid),{role:"Manager"});}
 export async function createOffer(data:any,uid:string){await addDoc(collection(db,"offers"),{...data,value:Number(data.value),targetEmail:data.targetType==="email"?data.targetEmail.trim().toLowerCase():"",active:true,createdBy:uid,createdAt:serverTimestamp()});}
 export async function confirmBooking(id:string,uid:string){await updateDoc(doc(db,"bookings",id),{status:"Confirmed",confirmedBy:uid,confirmedAt:serverTimestamp()});}
-export async function createBooking(input:{date:string;space:Space;inventoryId:string;label:string;userId:string;userEmail:string;start?:string;end?:string;base:number;discount:number;total:number;offerId?:string|null}){const key=`${input.date}_${input.inventoryId}_${input.start||"day"}`.replace(/[^a-zA-Z0-9_-]/g,"-"),ref=doc(db,"bookings",key),expiresAt=Timestamp.fromMillis(Date.now()+15*60*1000);await runTransaction(db,async tx=>{const existing=await tx.get(ref);if(existing.exists()){const d:any=existing.data(),active=d.status==="Confirmed"||(d.status==="Pending"&&(d.expiresAt?.toMillis?.()||0)>Date.now());if(active)throw Error("That seat or time slot is already booked.");}tx.set(ref,{...input,status:"Pending",expiresAt,createdAt:serverTimestamp()});});return {id:key,expiresAt};}
+export async function createBooking(input:{date:string;space:Space;inventoryId:string;label:string;userId:string;userEmail:string;customerEmail?:string;createdByRole?:string;walkIn?:boolean;start?:string;end?:string;base:number;discount:number;total:number;offerId?:string|null;status?:"Pending"|"Confirmed"}){
+  const startKey=input.start||"day";const key=`${input.date}_${input.inventoryId}_${startKey}`.replace(/[^a-zA-Z0-9_-]/g,"-");
+  const ref=doc(db,"bookings",key);const expiresAt=Timestamp.fromMillis(Date.now()+15*60*1000);
+  await runTransaction(db,async tx=>{const existing=await tx.get(ref);if(existing.exists()){const d:any=existing.data(),active=d.status==="Confirmed"||(d.status==="Pending"&&(d.expiresAt?.toMillis?.()||0)>Date.now());if(active)throw Error("That seat or time slot is already booked.");}
+    const payload=clean({...input,status:input.status||"Pending",expiresAt:input.status==="Confirmed"?null:expiresAt,createdAt:serverTimestamp()});tx.set(ref,payload);
+  });
+  return {id:key,expiresAt};
+}
