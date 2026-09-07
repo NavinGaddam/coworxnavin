@@ -24,13 +24,13 @@ service cloud.firestore {
     match /inventory/{id}{allow read: if signedIn();allow write: if isAdmin();}
     match /offers/{id}{allow read: if signedIn();allow create,update: if isManager();allow delete: if isAdmin();}
     match /bookings/{id}{
-      allow read: if signedIn()&&(resource.data.userId==request.auth.uid||isManager());
-      allow create: if signedIn()&&request.resource.data.userId==request.auth.uid;
+      allow read: if signedIn()&&(resource.data.userId==request.auth.uid||resource.data.customerEmail==email()||isManager());
+      allow create: if signedIn()&&(request.resource.data.userId==request.auth.uid||isManager());
       allow update: if isManager()||(signedIn()&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=="Cancelled");
     }
     match /temporaryLocks/{id}{
       allow read: if signedIn();
-      allow create: if signedIn()&&request.resource.data.userId==request.auth.uid;
+      allow create: if signedIn()&&(request.resource.data.userId==request.auth.uid||isManager());
       allow update,delete: if isManager()||(signedIn()&&resource.data.userId==request.auth.uid);
     }
   }
