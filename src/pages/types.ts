@@ -1,0 +1,17 @@
+export type Role = "User" | "Manager" | "Admin";
+export type Space = "cubicle" | "conference" | "podcast";
+export type OfferType = "percent" | "fixed";
+export type TargetType = "all" | "email";
+export type BookingStatus = "Pending" | "Confirmed" | "Expired" | "Cancelled";
+export type AppUser = {uid:string;name:string;email:string;photoURL?:string;role:Role};
+export type Offer = {id:string;title:string;description:string;type:OfferType;value:number;targetType:TargetType;targetEmail?:string;active:boolean};
+export type Booking = {id:string;userId:string;userEmail:string;inventoryId:string;space:Space;label:string;date:string;start?:string;end?:string;base:number;discount:number;total:number;offerId?:string|null;status:BookingStatus;expiresAt?:any};
+export const ADMIN_EMAIL="vsshegur@gmail.com";
+export const WA="919970836509";
+export const DEFAULT_PRICING={cubicle_basic:150,cubicle_premium:200,conference_slot:500,podcast_hourly:200};
+export const seats=Array.from({length:25},(_,i)=>({id:`${"ABCDE"[Math.floor(i/5)]}${i%5+1}`,premium:i%5===4}));
+export const confStarts=["08:00","09:00","10:00","11:00","12:00","13:00","14:00"];
+export const podStarts=["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00"];
+export const today=()=>new Date().toISOString().slice(0,10);
+export const addHours=(t:string,h:number)=>{const [hh,mm]=t.split(":").map(Number),n=hh*60+mm+h*60;return `${String(Math.floor(n/60)%24).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`};
+export const emailKey=(e:string)=>e.toLowerCase().replace(/[^a-z0-9@._+-]/g,"_");
