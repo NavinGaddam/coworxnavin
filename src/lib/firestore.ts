@@ -16,7 +16,7 @@ export async function ensureUser(u:any){const email=(u.email||"").toLowerCase();
 export async function saveUserProfile(uid:string,data:any){await updateDoc(doc(db,"users",uid),clean({...data,updatedAt:serverTimestamp()}));}
 export async function loadPricing(){const s=await getDoc(doc(db,"settings","pricing"));if(!s.exists())return DEFAULT_PRICING;const d:any={...DEFAULT_PRICING,...s.data()};if(d.desk_basic===undefined&&d.cubicle_basic!==undefined)d.desk_basic=d.cubicle_basic;if(d.desk_premium===undefined&&d.cubicle_premium!==undefined)d.desk_premium=d.cubicle_premium;return d as typeof DEFAULT_PRICING;}
 export async function savePricing(p:any){await setDoc(doc(db,"settings","pricing"),p,{merge:true});}
-export async function loadDeskPricing(date:string,defaults:any){const s=await getDoc(doc(db,"settings","deskPricing"));const data:any=s.exists()?s.data():{};return {...defaults,...(data[date]||{})};}
+export async function loadDeskPricing(date:string,defaults:any){const s=await getDoc(doc(db,"settings","deskPricing"));const data:any=s.exists()?s.data():{};const base:any={...defaults};for(let n=1;n<=22;n++){const id=`D${String(n).padStart(2,"0")}`;base[id]=[2,3,9,15,22].includes(n)?DEFAULT_PRICING.desk_premium:DEFAULT_PRICING.desk_basic;}return {...base,...(data[date]||{})};}
 export async function saveDeskPricing(date:string,prices:any){await setDoc(doc(db,"settings","deskPricing"),{[date]:prices},{merge:true});}
 export async function loadWifi(){const s=await getDoc(doc(db,"settings","wifi"));return s.exists()?s.data():{ssid:"",password:"",note:""};}
 export async function saveWifi(data:any){await setDoc(doc(db,"settings","wifi"),data,{merge:true});}
