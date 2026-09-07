@@ -1,0 +1,35 @@
+name: Normalize staff navigation
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rename Manager navigation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/App.tsx')
+          s=p.read_text()
+          s=s.replace('>Manager{pendingBookings.length?` · ${pendingBookings.length}`:""}</button>', '>Manage Booking{pendingBookings.length?` · ${pendingBookings.length}`:""}</button>')
+          s=s.replace('>Manager{pendingBookings.length?` · ${pendingBookings.length}`:""}</button>', '>Manage Booking{pendingBookings.length?` · ${pendingBookings.length}`:""}</button>')
+          p.write_text(s)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/App.tsx
+          if git diff --cached --quiet; then echo 'No changes'; else git commit -m 'fix: rename manager navigation to manage booking'; git push; fi
+      - name: Remove temporary workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/rename-staff-nav.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet || (git commit -m 'chore: remove temporary navigation workflow' && git push)
