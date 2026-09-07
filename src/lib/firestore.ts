@@ -21,11 +21,25 @@ export async function assignManager(email:string,uid:string){const e=email.trim(
 export async function acceptManager(a:any,uid:string){await updateDoc(doc(db,"roleAssignments",a.id),{status:"accepted",acceptedAt:serverTimestamp()});await updateDoc(doc(db,"users",uid),{role:"Manager"});}
 export async function createOffer(data:any,uid:string){await addDoc(collection(db,"offers"),{...data,value:Number(data.value),targetEmail:data.targetType==="email"?data.targetEmail.trim().toLowerCase():"",active:true,createdBy:uid,createdAt:serverTimestamp()});}
 export async function confirmBooking(id:string,uid:string){await updateDoc(doc(db,"bookings",id),{status:"Confirmed",confirmedBy:uid,confirmedAt:serverTimestamp()});}
+
 export async function createBooking(input:{date:string;space:Space;inventoryId:string;label:string;userId:string;userEmail:string;customerEmail?:string;createdByRole?:string;walkIn?:boolean;start?:string;end?:string;base:number;discount:number;total:number;offerId?:string|null;status?:"Pending"|"Confirmed"}){
-  const startKey=input.start||"day";const key=`${input.date}_${input.inventoryId}_${startKey}`.replace(/[^a-zA-Z0-9_-]/g,"-");
-  const ref=doc(db,"bookings",key);const expiresAt=Timestamp.fromMillis(Date.now()+15*60*1000);
-  await runTransaction(db,async tx=>{const existing=await tx.get(ref);if(existing.exists()){const d:any=existing.data(),active=d.status==="Confirmed"||(d.status==="Pending"&&(d.expiresAt?.toMillis?.()||0)>Date.now());if(active)throw Error("That seat or time slot is already booked.");}
-    const payload=clean({...input,status:input.status||"Pending",expiresAt:input.status==="Confirmed"?null:expiresAt,createdAt:serverTimestamp()});tx.set(ref,payload);
+  const startKey=input.start||"day";
+  const key=`${input.date}_${input.inventoryId}_${startKey}`.replace(/[^a-zA-Z0-9_-]/g,"-");
+  const bookingRef=doc(db,"bookings",key);
+  const lockRef=doc(db,"bookingLocks",key);
+  const expiresAt=Timestamp.fromMillis(Date.now()+15*60*1000);
+  const finalStatus=input.status||"Pending";
+  await runTransaction(db,async tx=>{
+    const lock=await tx.get(lockRef);
+    if(lock.exists()){
+      const ld:any=lock.data();
+      const lockActive=ld.status==="Confirmed" || (ld.status==="Pending" && (ld.expiresAt?.toMillis?.()||0)>Date.now());
+      if(lockActive) throw Error("That seat or time slot is already booked.");
+    }
+    const payload=clean({...input,status:finalStatus,expiresAt:finalStatus==="Confirmed"?null:expiresAt,createdAt:serverTimestamp()});
+    const lockPayload=clean({bookingId:key,inventoryId:input.inventoryId,date:input.date,start:input.start||null,end:input.end||null,userId:input.userId,status:finalStatus,expiresAt:finalStatus==="Confirmed"?null:expiresAt,updatedAt:serverTimestamp()});
+    tx.set(lockRef,lockPayload);
+    tx.set(bookingRef,payload);
   });
   return {id:key,expiresAt};
 }
