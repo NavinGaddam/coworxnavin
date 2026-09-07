@@ -4,4 +4,5 @@ import App from "./App";
 import "./styles.css";
 import "./repair.css";
 import "./pano.css";
+import "./branding.css";
 createRoot(document.getElementById("root")!).render(<React.StrictMode><App/></React.StrictMode>);
