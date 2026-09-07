@@ -1,0 +1,88 @@
+name: Final UI and PWA fix
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply UI fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # App.tsx: make Operations a real admin-only route and remove reliance on DOM hacks.
+          p=Path('src/App.tsx'); s=p.read_text()
+          if 'import OperationsSuite from "./pages/OperationsSuite";' not in s:
+              s=s.replace('import Home from "./pages/Home";import BookingPage from "./pages/Booking";import Amenities from "./pages/Amenities";import {Account,OffersPage,ManagerPage,AdminPage,LoginPage} from "./pages/Other";', 'import Home from "./pages/Home";import BookingPage from "./pages/Booking";import Amenities from "./pages/Amenities";import {Account,OffersPage,ManagerPage,AdminPage,LoginPage} from "./pages/Other";import OperationsSuite from "./pages/OperationsSuite";')
+          old_mobile='<button onClick={()=>nav("amenities")}>Amenities</button>{role!=="User"&&user&&<button onClick={()=>nav("manager")}>Manage Booking{pendingBookings.length?` · ${pendingBookings.length}`:""}</button>}{role==="Admin"&&user&&<button onClick={()=>nav("admin")}>Admin</button>}'
+          new_mobile='<button className={page==="amenities"?"navActive":""} onClick={()=>nav("amenities")}>Amenities</button>{role!=="User"&&user&&<button className={page==="manager"?"navActive":""} onClick={()=>nav("manager")}>Manage Booking{pendingBookings.length?` · ${pendingBookings.length}`:""}</button>}{role==="Admin"&&user&&<><button className={page==="operations"?"navActive":""} onClick={()=>nav("operations")}>Operations</button><button className={page==="admin"?"navActive":""} onClick={()=>nav("admin")}>Admin</button></>}'
+          s=s.replace(old_mobile,new_mobile)
+          old_desktop='<button onClick={resetBook}>Book</button>{user&&<><button onClick={()=>nav("bookings")}>My Bookings</button><button onClick={()=>nav("offers")}>Offers</button></>}<button onClick={()=>nav("amenities")}>Amenities</button>{role!=="User"&&user&&<button className="staffNav" onClick={()=>nav("manager")}>Manage Booking{pendingBookings.length?` · ${pendingBookings.length}`:""}</button>}{role==="Admin"&&user&&<button className="staffNav" onClick={()=>nav("admin")}>Admin</button>}'
+          new_desktop='<button className={page==="book"?"navActive":""} onClick={resetBook}>Book</button>{user&&<><button className={page==="bookings"?"navActive":""} onClick={()=>nav("bookings")}>My Bookings</button><button className={page==="offers"?"navActive":""} onClick={()=>nav("offers")}>Offers</button></>}<button className={page==="amenities"?"navActive":""} onClick={()=>nav("amenities")}>Amenities</button>{role!=="User"&&user&&<button className={page==="manager"?"navActive":""} onClick={()=>nav("manager")}>Manage Booking{pendingBookings.length?` · ${pendingBookings.length}`:""}</button>}{role==="Admin"&&user&&<><button className={page==="operations"?"navActive":""} onClick={()=>nav("operations")}>Operations</button><button className={page==="admin"?"navActive":""} onClick={()=>nav("admin")}>Admin</button></>}'
+          s=s.replace(old_desktop,new_desktop)
+          route=' {page==="admin"&&user&&role==="Admin"&&<AdminPage '
+          if 'page==="operations"&&user&&role==="Admin"' not in s:
+              insert=' {page==="operations"&&user&&role==="Admin"&&<OperationsSuite users={users} bookings={staffBookings} admins={admins} adminLogs={adminLogs} actorUid={user.uid} actorEmail={user.email||""} onFlash={(m:string)=>setFlash(m)} />} '
+              s=s.replace(route, insert+route, 1)
+          p.write_text(s)
+
+          # Booking.tsx: replace only ProfileModal with a polished, functional form.
+          p=Path('src/pages/Booking.tsx'); s=p.read_text()
+          idx=s.find('function ProfileModal(')
+          if idx!=-1:
+              s=s[:idx] + '''function ProfileModal({title,date,endDate,total,profile,setProfile,onClose,onContinue,message}:any){\n  const professions=["IT Professional","Developer","Tester","Marketing Team","Student","Designer","Consultant","Business","Other"];\n  return <div className="modalBackdrop"><div className="profileModal modernProfileModal"><div className="profileModalHead"><div><span className="eyebrow">FINAL CHECK</span><h3>Customer details</h3><p>Google name is used automatically. Add your contact and professional details before submitting.</p></div><button className="ghost small" onClick={onClose}>Close</button></div><div className="profileSummary"><span>{title}</span><b>{date}{endDate!==date?` → ${endDate}`:""}</b><strong>₹{total}</strong></div><div className="profileForm modernProfileForm"><label className="full"><span>Mobile number <em>*</em></span><input type="tel" inputMode="tel" autoComplete="tel" placeholder="+91 98765 43210" value={profile.mobile||""} onChange={e=>setProfile({...profile,mobile:e.target.value})}/><small>Used for booking contact and WhatsApp.</small></label><label><span>Gender</span><select value={profile.gender||""} onChange={e=>setProfile({...profile,gender:e.target.value})}><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option><option>Prefer not to say</option></select></label><label><span>Date of birth</span><input type="date" value={profile.dob||""} onChange={e=>setProfile({...profile,dob:e.target.value})}/></label><label><span>Profession</span><select value={profile.profession||""} onChange={e=>setProfile({...profile,profession:e.target.value})}><option value="">Select profession</option>{professions.map(x=><option key={x}>{x}</option>)}</select></label>{profile.profession==="Other"&&<label className="full"><span>Tell us your profession <em>*</em></span><input value={profile.otherProfession||""} onChange={e=>setProfile({...profile,otherProfession:e.target.value})} placeholder="e.g. Architect, HR, Photographer"/></label>}</div>{message&&<div className="modalError">{message}</div>}<div className="modalFooter"><small>We use these details only to manage your Coworx Central booking.</small><button className="primary modernContinue" onClick={onContinue}>Continue to WhatsApp <MessageCircle size={17}/></button></div></div></div>\n}\n'''
+              p.write_text(s)
+
+          # index.html: remove the old DOM-mutating navigation hack and add a consistent install prompt.
+          p=Path('index.html'); s=p.read_text()
+          s=s.replace('<link rel="stylesheet" href="/design-qa.css"/>','')
+          m=re.search(r'<script>\(function\(\)\{var selected=.*?</script>',s)
+          if m: s=s[:m.start()]+s[m.end():]
+          install='''<script>(function(){var deferred=null,shown=false;window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();deferred=e;show();});function show(){if(shown||window.matchMedia("(display-mode: standalone)").matches||localStorage.getItem("coworx-install-dismissed")==="1")return;shown=true;setTimeout(function(){var el=document.createElement("div");el.className="pwaInstallPrompt";el.innerHTML='<div class="pwaInstallIcon"><img src="/icons/coworx-icon.svg" alt="Coworx Central"></div><div class="pwaInstallCopy"><strong>Install Coworx Central</strong><span>Get faster access, a home-screen icon and an app-like booking experience.</span></div><button class="pwaInstallNow">Install</button><button class="pwaInstallClose" aria-label="Close">×</button>';document.body.appendChild(el);el.querySelector('.pwaInstallNow').addEventListener('click',async function(){if(deferred){deferred.prompt();await deferred.userChoice;deferred=null;}localStorage.setItem("coworx-install-dismissed","1");el.remove();});el.querySelector('.pwaInstallClose').addEventListener('click',function(){localStorage.setItem("coworx-install-dismissed","1");el.remove();});},1200);}if(document.readyState!=="loading")show();else window.addEventListener("DOMContentLoaded",show);})();</script>'''
+          s=s.replace('</body>',install+'<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}))}</script></body>')
+          # remove old duplicate service worker registration if present
+          s=s.replace('<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}))}</script><script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}))}</script>','<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}))}</script>')
+          p.write_text(s)
+
+          # Premium-looking install icon + favicon.
+          icon=Path('public/icons/coworx-icon.svg'); icon.parent.mkdir(parents=True,exist_ok=True)
+          icon.write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0d1218"/><circle cx="256" cy="256" r="155" fill="none" stroke="#efb31c" stroke-width="42"/><path d="M328 169 227 270l-34-34" fill="none" stroke="#4a8cff" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="256" cy="256" r="23" fill="#4a8cff"/></svg>''')
+          # Add PNG variants for browser/PWA installability when ImageMagick is available.
+          import shutil, subprocess
+          if shutil.which('convert'):
+              subprocess.run(['convert',str(icon),'public/icons/coworx-192.png'],check=True)
+              subprocess.run(['convert',str(icon),'public/icons/coworx-512.png'],check=True)
+
+          # Manifest icons and metadata.
+          mp=Path('public/manifest.webmanifest'); ms=mp.read_text()
+          ms=ms.replace('"icons":[{"src":"/icons/coworx-icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]','"icons":[{"src":"/icons/coworx-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},{"src":"/icons/coworx-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"},{"src":"/icons/coworx-icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]')
+          mp.write_text(ms)
+
+          # Favicon and polished nav/modal/install styles.
+          ip=Path('index.html'); hs=ip.read_text(); hs=hs.replace('<title>Coworx Central · Solapur City</title>','<link rel="icon" type="image/svg+xml" href="/icons/coworx-icon.svg"/><link rel="apple-touch-icon" href="/icons/coworx-192.png"/><title>Coworx Central · Solapur City</title>'); ip.write_text(hs)
+
+          bp=Path('src/pages/booking-enhancements.css'); bs=bp.read_text(); bs+='''\n.modernProfileModal{width:min(700px,calc(100vw - 28px));padding:26px;border-radius:24px;background:var(--card);box-shadow:0 32px 100px rgba(0,0,0,.45)}.modernProfileForm{margin:20px 0;display:grid;grid-template-columns:1fr 1fr;gap:14px}.modernProfileForm label{display:grid;gap:7px;color:var(--muted);font-size:12px;font-weight:800}.modernProfileForm label.full{grid-column:1/-1}.modernProfileForm em{color:#ef6d6d;font-style:normal}.modernProfileForm input,.modernProfileForm select{height:48px;border:1px solid var(--line);border-radius:13px;background:var(--soft);color:var(--text);padding:0 13px;font-size:14px;outline:none}.modernProfileForm input:focus,.modernProfileForm select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(74,140,255,.13)}.modernProfileForm small{font-size:11px;color:var(--muted);font-weight:500}.modernContinue{min-width:260px;justify-content:center}.navActive{color:var(--text)!important;background:var(--soft)!important;border-radius:10px!important;box-shadow:inset 0 0 0 1px var(--line);position:relative}.desktopNav .staffNav,.desktopNav button.staffNav{color:var(--text)!important}.desktopNav .staffNav:hover,.desktopNav button.staffNav:hover{color:var(--text)!important}.desktopNav{gap:6px!important}.pwaInstallPrompt{position:fixed;z-index:99999;right:22px;bottom:22px;display:flex;align-items:center;gap:14px;width:min(430px,calc(100vw - 28px));padding:14px 16px;border:1px solid var(--line,#2d333a);border-radius:18px;background:var(--card,#16191d);color:var(--text,#fff);box-shadow:0 24px 70px rgba(0,0,0,.42)}.pwaInstallIcon{width:48px;height:48px;flex:none}.pwaInstallIcon img{width:100%;height:100%;display:block;border-radius:13px}.pwaInstallCopy{display:grid;gap:3px;min-width:0;flex:1}.pwaInstallCopy strong{font-size:14px}.pwaInstallCopy span{font-size:11px;line-height:1.45;color:var(--muted,#89909a)}.pwaInstallNow{border:0;border-radius:11px;padding:10px 14px;font-weight:800;background:var(--accent,#efb31c);color:#111;cursor:pointer}.pwaInstallClose{border:0;background:transparent;color:var(--muted,#89909a);font-size:22px;cursor:pointer;padding:4px}.pwaInstallPrompt + *{}\n@media(max-width:700px){.modernProfileModal{padding:18px;border-radius:20px}.modernProfileForm{grid-template-columns:1fr}.modernProfileForm label.full{grid-column:auto}.modernContinue{min-width:0;width:100%}.pwaInstallPrompt{right:14px;bottom:14px;gap:10px;padding:12px}.pwaInstallIcon{width:42px;height:42px}.pwaInstallNow{padding:9px 12px}}\n'''; bp.write_text(bs)
+          PY
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git commit -m "Fix PWA install, navigation, and booking form UI"
+          git push
+      - name: Remove temporary workflow
+        if: always()
+        shell: bash
+        run: |
+          git rm -f .github/workflows/final-ui-pwa-fix.yml || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then git commit -m "Remove temporary UI fix workflow" && git push; fi
