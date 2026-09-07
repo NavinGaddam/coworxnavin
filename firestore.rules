@@ -1,43 +1,96 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn(){return request.auth!=null;}
-    function email(){return signedIn()?request.auth.token.email.toLowerCase():"";}
-    function isAdmin(){return email()=="vsshegur@gmail.com";}
-    function isManager(){return signedIn()&&(isAdmin()||get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role=="Manager");}
-    match /users/{uid}{
-      allow read: if signedIn()&&(request.auth.uid==uid||isManager());
-      allow create: if signedIn()&&request.auth.uid==uid;
-      allow update: if signedIn()&&(request.auth.uid==uid||isAdmin()||(isManager()&&request.resource.data.role!="Admin"));
+    function signedIn(){ return request.auth != null; }
+    function email(){ return signedIn() ? request.auth.token.email.toLowerCase() : ""; }
+    function isAdmin(){ return email() == "vsshegur@gmail.com"; }
+    function isManager(){
+      return signedIn() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "Manager")
+      );
     }
-    match /roleAssignments/{id}{
-      allow read: if isAdmin()||(signedIn()&&id==email());
-      allow create,delete: if isAdmin();
-      allow update: if isAdmin()||(signedIn()&&id==email()&&request.resource.data.email==resource.data.email&&request.resource.data.role==resource.data.role&&(request.resource.data.status=="accepted"||request.resource.data.status=="declined"));
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isManager());
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && (
+        request.auth.uid == uid ||
+        isAdmin() ||
+        (isManager() && request.resource.data.role != "Admin")
+      );
     }
-    match /notifications/{id}{
-      allow read,update: if signedIn()&&(resource.data.recipientUid==request.auth.uid||isAdmin());
-      allow create: if isAdmin();
+
+    match /roleAssignments/{id} {
+      allow read: if isAdmin() || (signedIn() && id == email());
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        signedIn() && id == email() &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.role == resource.data.role &&
+        (request.resource.data.status == "accepted" || request.resource.data.status == "declined")
+      );
+    }
+
+    match /notifications/{id} {
+      allow read, update: if signedIn() && (resource.data.recipientUid == request.auth.uid || isAdmin());
+      allow create, delete: if isAdmin();
+    }
+
+    match /settings/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /inventory/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /offers/{id} {
+      allow read: if signedIn();
+      allow create, update: if isManager();
       allow delete: if isAdmin();
     }
-    match /settings/{id}{allow read: if signedIn();allow write: if isAdmin();}
-    match /inventory/{id}{allow read: if signedIn();allow write: if isAdmin();}
-    match /offers/{id}{allow read: if signedIn();allow create,update: if isManager();allow delete: if isAdmin();}
-    match /bookings/{id}{
-      allow read: if signedIn()&&(resource.data.userId==request.auth.uid||resource.data.customerEmail==email()||isManager());
-      allow create: if signedIn()&&(request.resource.data.userId==request.auth.uid||isManager());
-      allow update: if isManager()||(signedIn()&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=="Cancelled");
+
+    match /bookings/{id} {
+      allow read: if signedIn() && (
+        isManager() ||
+        resource.data.userId == request.auth.uid ||
+        (resource.data.customerEmail != null && resource.data.customerEmail == email())
+      );
+      allow create: if signedIn() && (
+        isManager() ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update: if isManager() || (
+        signedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == "Cancelled"
+      );
     }
-    match /bookingLocks/{id}{
+
+    match /bookingLocks/{id} {
       allow read: if signedIn();
-      allow create: if signedIn()&&(request.resource.data.userId==request.auth.uid||isManager());
-      allow update: if isManager()||(signedIn()&&resource.data.userId==request.auth.uid);
-      allow delete: if isManager()||(signedIn()&&resource.data.userId==request.auth.uid);
+      allow create: if signedIn() && (
+        isManager() ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update, delete: if isManager() || (
+        signedIn() && resource.data.userId == request.auth.uid
+      );
     }
-    match /temporaryLocks/{id}{
+
+    match /temporaryLocks/{id} {
       allow read: if signedIn();
-      allow create: if signedIn()&&(request.resource.data.userId==request.auth.uid||isManager());
-      allow update,delete: if isManager()||(signedIn()&&resource.data.userId==request.auth.uid);
+      allow create: if signedIn() && (
+        isManager() ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update, delete: if isManager() || (
+        signedIn() && resource.data.userId == request.auth.uid
+      );
     }
   }
 }
