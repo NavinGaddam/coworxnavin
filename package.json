@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@photo-sphere-viewer/core": "5.14.1",
+    "@photo-sphere-viewer/gyroscope-plugin": "5.14.1",
     "firebase": "^12.2.1",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
