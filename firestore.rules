@@ -15,6 +15,12 @@ service cloud.firestore {
       allow read: if signedIn() && (request.auth.uid == uid || isManager());
       allow create: if signedIn() && request.auth.uid == uid;
       allow update: if signedIn() && (request.auth.uid == uid || isAdmin() || (isManager() && request.resource.data.role != "Admin"));
+      match /bookings/{bookingId} {
+        allow read: if signedIn() && (request.auth.uid == uid || isManager());
+        allow create: if signedIn() && (request.auth.uid == uid || isManager());
+        allow update: if isManager() || (signedIn() && request.auth.uid == uid);
+        allow delete: if isAdmin();
+      }
     }
     match /roleAssignments/{id} {
       allow read: if isAdmin() || (signedIn() && id == userEmail());
