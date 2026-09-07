@@ -14,4 +14,4 @@ export const confStarts=["08:00","09:00","10:00","11:00","12:00","13:00","14:00"
 export const podStarts=["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00"];
 export const today=()=>new Date().toISOString().slice(0,10);
 export const addHours=(t:string,h:number)=>{const [hh,mm]=t.split(":").map(Number),n=hh*60+mm+h*60;return `${String(Math.floor(n/60)%24).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`};
-export const emailKey=(e:string)=>e.toLowerCase().replace(/[^a-z0-9@._+-]/g,"_");
+export const emailKey=(e:string)=>e.toLowerCase();
