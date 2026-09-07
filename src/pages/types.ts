@@ -9,7 +9,7 @@ export type Booking = {id:string;userId:string;userEmail:string;customerEmail?:s
 export const ADMIN_EMAIL="vsshegur@gmail.com";
 export const ADMIN_EMAILS=["vsshegur@gmail.com","navingaddam2@gmail.com"];
 export const WA="919970836509";
-export const DEFAULT_PRICING={cubicle_basic:150,cubicle_premium:200,conference_slot:500,podcast_hourly:200};
+export const DEFAULT_PRICING={cubicle_basic:200,cubicle_premium:250,conference_slot:500,podcast_hourly:200};
 export const seats=Array.from({length:25},(_,i)=>({id:`${"ABCDE"[Math.floor(i/5)]}${i%5+1}`,premium:i%5===4}));
 export const confStarts=["08:00","09:00","10:00","11:00","12:00","13:00","14:00"];
 export const podStarts=["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00"];
