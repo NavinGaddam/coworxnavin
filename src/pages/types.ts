@@ -25,4 +25,4 @@ export const addHours=(t:string,h:number)=>{const [hh,mm]=t.split(":").map(Numbe
 export const addDays=(iso:string,n:number)=>{const d=new Date(`${iso}T00:00:00`);d.setDate(d.getDate()+n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
 export const dateSpan=(start:string,end:string)=>{if(end<start)return[];const out:string[]=[];for(let i=0;i<370;i++){const d=addDays(start,i);out.push(d);if(d===end)break;}return out};
 export const withinBusinessHours=(start:string,end:string)=>start>=BUSINESS_START&&end<=BUSINESS_END&&start<end;
-export const emailKey=(email:string)=>email.trim().toLowerCase().replace(/[.#$[\\]/]/g,"-");
+export const emailKey=(email:string)=>email.trim().toLowerCase().replaceAll(".","-").replaceAll("#","-").replaceAll("$","-").replaceAll("[","-").replaceAll("]","-").replaceAll("/","-");
