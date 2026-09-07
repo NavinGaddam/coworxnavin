@@ -4,7 +4,7 @@ import {GoogleAuthProvider,onAuthStateChanged,signInWithPopup,signOut} from "fir
 import {doc,updateDoc} from "firebase/firestore";
 import {auth,db,isFirebaseConfigured} from "./firebase";
 import {DEFAULT_PRICING,Role,Space,Booking,seats,today,addHours} from "./pages/types";
-import {ensureUser,loadPricing,savePricing,assignManager,acceptManager,createOffer,confirmBooking,revokeBooking,createBooking,watchUser,watchAllBookings,watchPendingBookings,watchBookingLocks,watchOffers,watchRoleAssignment} from "./lib/firestore";
+import {ensureUser,backfillUserBookings,loadPricing,savePricing,assignManager,acceptManager,createOffer,confirmBooking,revokeBooking,createBooking,watchUser,watchAllBookings,watchPendingBookings,watchBookingLocks,watchOffers,watchRoleAssignment} from "./lib/firestore";
 import Home from "./pages/Home";import BookingPage from "./pages/Booking";import Amenities from "./pages/Amenities";import {Account,OffersPage,ManagerPage,AdminPage,LoginPage} from "./pages/Other";import "./styles.css";import "./mobile.css";
 export default function App(){
  const [user,setUser]=useState<any>(null),[role,setRole]=useState<Role>("User"),[page,setPage]=useState("home"),[menuOpen,setMenuOpen]=useState(false),[theme,setTheme]=useState<"dark"|"light">((localStorage.getItem("coworx-theme") as any)||"dark");
@@ -13,7 +13,7 @@ export default function App(){
  const [managerEmail,setManagerEmail]=useState(""),[customerEmail,setCustomerEmail]=useState(""),[phoneNumber,setPhoneNumber]=useState(()=>localStorage.getItem("coworx-phone")||""),[staffBooking,setStaffBooking]=useState(false);
  const [offerForm,setOfferForm]=useState({title:"",description:"",type:"percent" as any,value:10,targetType:"all" as any,targetEmail:""});
  useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem("coworx-theme",theme)},[theme]);
- useEffect(()=>onAuthStateChanged(auth,async u=>{setUser(u);if(!u){setRole("User");return}try{setRole(await ensureUser(u))}catch(e:any){setFlash(e?.message||"Could not load account")}}),[]);
+ useEffect(()=>onAuthStateChanged(auth,async u=>{setUser(u);if(!u){setRole("User");return}try{const r=await ensureUser(u);setRole(r);try{await backfillUserBookings(u.uid)}catch{} }catch(e:any){setFlash(e?.message||"Could not load account")}}),[]);
  useEffect(()=>{loadPricing().then(setPrices).catch(()=>{})},[]);
  useEffect(()=>{if(!user){setBookings([]);setStaffBookings([]);setOffers([]);setAssignment(null);setLocks([]);return}const a=watchUser(user.uid,user.email||"",setBookings,(e)=>setFlash(`My bookings error: ${e?.message||"Permission denied"}`)),b=watchOffers(user.email||"",setOffers),c=watchRoleAssignment(user.email||"",setAssignment),d=watchBookingLocks(date,setLocks,e=>setFlash(e?.message||"Could not load availability"));return()=>{a();b();c();d()}},[user,date]);
  useEffect(()=>{if(role==="User"){setPendingBookings([]);setStaffBookings([]);return}const a=watchPendingBookings(setPendingBookings,e=>setFlash(`Pending booking queue error: ${e?.message||"Permission denied"}`)),b=watchAllBookings(setStaffBookings,e=>setFlash(`Staff booking list error: ${e?.message||"Permission denied"}`));return()=>{a();b()}},[role]);
