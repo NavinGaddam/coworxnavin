@@ -22,7 +22,7 @@ header{height:82px!important;padding:0 30px!important;gap:24px!important}
 .composerFooter .primary{white-space:nowrap!important}
 /* Offers / memberships */
 .offerCards{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))!important;gap:18px!important;align-items:stretch!important}
-.offerCards>.info:only-child{width:100%!important;max-width:none!important;min-height:0!important;padding:24px!important}
+.offerCards>.info:only-child{width:100%!important;max-width:none!important;min-height:0!important;padding:24px!important;grid-column:1/-1!important}
 .membershipPublic{margin-top:24px!important;padding:26px!important}
 .membershipPublic h3{margin:8px 0 8px!important;font-size:22px!important}
 .membershipPublic>div:first-child p{margin:0!important;line-height:1.55}
