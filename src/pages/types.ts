@@ -7,6 +7,7 @@ export type AppUser = {uid:string;name:string;email:string;photoURL?:string;role
 export type Offer = {id:string;title:string;description:string;type:OfferType;value:number;targetType:TargetType;targetEmail?:string;active:boolean};
 export type Booking = {id:string;userId:string;userEmail:string;customerEmail?:string;customerPhone?:string;inventoryId:string;space:Space;label:string;date:string;start?:string;end?:string;base:number;discount:number;staffDiscount?:number;total:number;offerId?:string|null;status:BookingStatus;walkIn?:boolean;createdByRole?:Role|string;paymentMethod?:"UPI"|"Cash"|"Other";paymentRef?:string;paymentReceived?:number;confirmedBy?:string;confirmedAt?:any;expiresAt?:any;createdAt?:any;revokedBy?:string;revokedAt?:any};
 export const ADMIN_EMAIL="vsshegur@gmail.com";
+export const ADMIN_EMAILS=["vsshegur@gmail.com","navingaddam2@gmail.com"];
 export const WA="919970836509";
 export const DEFAULT_PRICING={cubicle_basic:150,cubicle_premium:200,conference_slot:500,podcast_hourly:200};
 export const seats=Array.from({length:25},(_,i)=>({id:`${"ABCDE"[Math.floor(i/5)]}${i%5+1}`,premium:i%5===4}));
