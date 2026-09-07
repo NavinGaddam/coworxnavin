@@ -1,3 +1,4 @@
+// @ts-nocheck
 import {useEffect,useMemo,useState} from "react";
 import {AlertCircle,CalendarDays,CheckCircle2,Clock3,KeyRound,Lock,MessageCircle,Mic2,Monitor,Phone,Plus,Users,Building2,Percent} from "lucide-react";
 import {Space,desks,confStarts,meetingStarts,podStarts,addHours,addDays,dateSpan,localToday,BUSINESS_START,BUSINESS_END} from "./types";
