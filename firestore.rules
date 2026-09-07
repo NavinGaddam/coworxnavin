@@ -15,9 +15,9 @@ service cloud.firestore {
       allow read: if signedIn() && (request.auth.uid == uid || isManager());
       allow create: if signedIn() && request.auth.uid == uid;
       allow update: if signedIn() && (request.auth.uid == uid || isAdmin() || (isManager() && request.resource.data.role != "Admin"));
+      allow delete: if isAdmin();
       match /bookings/{bookingId} {
-        allow read: if signedIn() && (request.auth.uid == uid || isManager());
-        allow create: if signedIn() && (request.auth.uid == uid || isManager());
+        allow read, create: if signedIn() && (request.auth.uid == uid || isManager());
         allow update: if isManager() || (signedIn() && request.auth.uid == uid);
         allow delete: if isAdmin();
       }
@@ -32,8 +32,11 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
     }
     match /settings/{id} {
-      allow read: if signedIn();
+      allow read: if signedIn() && id != "wifi";
       allow write: if isAdmin();
+    }
+    match /settings/wifi {
+      allow read, write: if isManager();
     }
     match /inventory/{id} {
       allow read: if signedIn();
