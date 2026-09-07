@@ -1,0 +1,65 @@
+name: Profile form polish
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Improve booking profile form
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          app=Path('src/pages/Booking.tsx')
+          s=app.read_text()
+          old='''const submit=async()=>{const phone=profile.mobile.trim();const email=(p.staffBooking?String(p.customerEmail||""):String(p.user?.email||"")).trim().toLowerCase();'''
+          new='''const submit=async()=>{const phone=profile.mobile.trim();const profession=profile.profession==="Other"?String(profile.otherProfession||"").trim():String(profile.profession||"").trim();const email=(p.staffBooking?String(p.customerEmail||""):String(p.user?.email||"")).trim().toLowerCase();'''
+          if old in s: s=s.replace(old,new,1)
+          old='''await saveUserProfile(p.user.uid,{phone,gender:profile.gender,dob:profile.dob,profession:profile.profession}).catch(()=>{});'''
+          new='''await saveUserProfile(p.user.uid,{phone,gender:profile.gender,dob:profile.dob,profession}).catch(()=>{});'''
+          if old in s: s=s.replace(old,new,1)
+          old='''const profileGrid'><label>Gender<select value={profile.gender} onChange={e=>setProfile({...profile,gender:e.target.value})}><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option><option>Prefer not to say</option></select></label><label>Date of birth<input type="date" value={profile.dob} onChange={e=>setProfile({...profile,dob:e.target.value})}/></label><label>Profession<input value={profile.profession} onChange={e=>setProfile({...profile,profession:e.target.value})} placeholder="Designer, consultant…"/></label></div>'''
+          new='''const profileGrid'><label className="profileField profileFieldWide"><span>Mobile number *</span><input type="tel" inputMode="tel" autoComplete="tel" value={profile.mobile} onChange={e=>setProfile({...profile,mobile:e.target.value})} placeholder="+91 98765 43210" required /></label><label className="profileField"><span>Gender</span><select value={profile.gender} onChange={e=>setProfile({...profile,gender:e.target.value})}><option value="">Select gender</option><option>Male</option><option>Female</option><option>Other</option><option>Prefer not to say</option></select></label><label className="profileField"><span>Date of birth</span><input className="modernDate" type="date" max="9999-12-31" value={profile.dob} onChange={e=>setProfile({...profile,dob:e.target.value})}/></label><label className="profileField"><span>Profession</span><select value={profile.profession} onChange={e=>setProfile({...profile,profession:e.target.value,otherProfession:e.target.value==="Other"?profile.otherProfession:""})}><option value="">Select profession</option><option>IT Professional</option><option>Developer</option><option>Tester</option><option>Marketing Team</option><option>Student</option><option>Designer</option><option>Consultant</option><option>Business</option><option>Other</option></select></label>{profile.profession==="Other"&&<label className="profileField profileFieldWide"><span>Tell us your profession</span><input value={profile.otherProfession||""} onChange={e=>setProfile({...profile,otherProfession:e.target.value})} placeholder="Enter your profession" /></label>}</div>'''
+          if old in s: s=s.replace(old,new,1)
+          old='''const [profile,setProfile]=useState({mobile:p.phoneNumber||"",gender:"",dob:"",profession:""});'''
+          new='''const [profile,setProfile]=useState({mobile:p.phoneNumber||"",gender:"",dob:"",profession:"",otherProfession:""});'''
+          if old in s: s=s.replace(old,new,1)
+          old='''setProfile(x=>({...x,mobile:p.phoneNumber||x.mobile}));setModal(true);'''
+          new='''setProfile(x=>({...x,mobile:p.phoneNumber||x.mobile}));setModal(true);'''
+          if old in s: s=s.replace(old,new,1)
+          old='''<small>Your name comes from your Google profile. Mobile number is already saved on your account.</small>'''
+          new='''<small>Your name comes from your Google profile. Mobile number is required for booking and is saved to your account.</small>'''
+          if old in s: s=s.replace(old,new,1)
+          app.write_text(s)
+
+          css=Path('src/pages/ui-fixes.css')
+          c=css.read_text() if css.exists() else ''
+          addon='''\n/* Booking profile form redesign */\n.profileModal{width:min(760px,calc(100vw - 28px))!important;max-height:min(88vh,760px)!important;overflow:auto!important;border-radius:24px!important;padding:26px!important;box-shadow:0 28px 80px rgba(0,0,0,.48)!important}\n.profileModalHead{gap:18px!important;margin-bottom:22px!important;align-items:flex-start!important}\n.profileModalHead h3{font-size:28px!important;line-height:1.1!important;margin:6px 0 7px!important}\n.profileModalHead p{margin:0!important;line-height:1.45!important}\n.profileGrid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:16px!important;padding:0!important}\n.profileField{display:grid!important;gap:7px!important;min-width:0!important}\n.profileField span{font-size:12px!important;font-weight:800!important;letter-spacing:.02em!important;color:var(--muted)!important}\n.profileField input,.profileField select{width:100%!important;min-height:48px!important;box-sizing:border-box!important;border:1px solid var(--line)!important;background:var(--soft)!important;color:var(--text)!important;border-radius:13px!important;padding:0 13px!important;font-size:15px!important;outline:none!important}\n.profileField input:focus,.profileField select:focus{border-color:var(--accent)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent)!important}\n.profileFieldWide{grid-column:1/-1!important}\n.profileField input[type="date"]{padding-right:12px!important;appearance:auto!important;color-scheme:dark!important}\n.profileSummary{border:1px solid var(--line)!important;background:var(--soft)!important;border-radius:15px!important;padding:13px 15px!important;margin:20px 0 18px!important}\n.profileModal .modalFooter{display:flex!important;justify-content:space-between!important;align-items:center!important;gap:18px!important;margin-top:22px!important;padding-top:18px!important;border-top:1px solid var(--line)!important}\n.profileModal .modalFooter small{max-width:400px!important;line-height:1.45!important}\n.profileModal .primary{min-height:50px!important;border-radius:13px!important;padding:0 18px!important;white-space:nowrap!important}\n@media(max-width:700px){.profileModal{padding:20px!important;border-radius:20px!important}.profileGrid{grid-template-columns:1fr!important;gap:13px!important}.profileFieldWide{grid-column:auto!important}.profileModalHead h3{font-size:23px!important}.profileModal .modalFooter{display:grid!important;grid-template-columns:1fr!important}.profileModal .primary{width:100%!important}}\n'''
+          if '/* Booking profile form redesign */' not in c: css.write_text(c+addon)
+
+          # Keep the booking-hours notice from ever colliding with adjacent content.
+          bcss=Path('src/pages/booking.css')
+          bc=bcss.read_text() if bcss.exists() else ''
+          bh='''\n.bookingHoursNotice{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px!important;margin-top:12px!important;line-height:1.45!important;max-width:900px!important}\n.bookingHoursNotice span{display:inline-flex;align-items:center;gap:5px;min-width:0}\n@media(max-width:700px){.bookingHoursNotice{align-items:flex-start!important;flex-direction:column!important;gap:5px!important}}\n'''
+          if '.bookingHoursNotice{display:flex' not in bc: bcss.write_text(bc+bh)
+
+          # Make the actual booking form submit impossible without a mobile number.
+          print('profile form polish applied')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pages/Booking.tsx src/pages/ui-fixes.css src/pages/booking.css
+          git diff --cached --quiet || (git commit -m 'fix: modernize customer profile booking form' && git push)
+      - name: Remove temporary workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/profile-form-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet || (git commit -m 'chore: remove temporary profile form workflow' && git push)
