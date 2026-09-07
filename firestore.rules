@@ -28,6 +28,12 @@ service cloud.firestore {
       allow create: if signedIn()&&(request.resource.data.userId==request.auth.uid||isManager());
       allow update: if isManager()||(signedIn()&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=="Cancelled");
     }
+    match /bookingLocks/{id}{
+      allow read: if signedIn();
+      allow create: if signedIn()&&(request.resource.data.userId==request.auth.uid||isManager());
+      allow update: if isManager()||(signedIn()&&resource.data.userId==request.auth.uid);
+      allow delete: if isManager()||(signedIn()&&resource.data.userId==request.auth.uid);
+    }
     match /temporaryLocks/{id}{
       allow read: if signedIn();
       allow create: if signedIn()&&(request.resource.data.userId==request.auth.uid||isManager());
