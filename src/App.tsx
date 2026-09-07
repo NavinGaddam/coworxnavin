@@ -4,19 +4,20 @@ import {GoogleAuthProvider,onAuthStateChanged,signInWithPopup,signOut} from "fir
 import {doc,updateDoc} from "firebase/firestore";
 import {auth,db,isFirebaseConfigured} from "./firebase";
 import {DEFAULT_PRICING,Role,Space,Booking,seats,today,addHours} from "./pages/types";
-import {ensureUser,loadPricing,savePricing,assignManager,acceptManager,createOffer,confirmBooking,createBooking,watchUser,watchAllBookings,watchPendingBookings,watchOffers,watchRoleAssignment} from "./lib/firestore";
+import {ensureUser,loadPricing,savePricing,assignManager,acceptManager,createOffer,confirmBooking,createBooking,watchUser,watchAllBookings,watchOffers,watchRoleAssignment} from "./lib/firestore";
 import Home from "./pages/Home";import BookingPage from "./pages/Booking";import Amenities from "./pages/Amenities";import {Account,OffersPage,ManagerPage,AdminPage,LoginPage} from "./pages/Other";import "./styles.css";
 export default function App(){
  const [user,setUser]=useState<any>(null),[role,setRole]=useState<Role>("User"),[page,setPage]=useState("home"),[theme,setTheme]=useState<"dark"|"light">((localStorage.getItem("coworx-theme") as any)||"dark");
  const [date,setDate]=useState(today()),[space,setSpace]=useState<Space>("cubicle"),[seat,setSeat]=useState<string|null>(null),[conf,setConf]=useState("09:00"),[pod,setPod]=useState("10:00"),[prices,setPrices]=useState(DEFAULT_PRICING);
- const [bookings,setBookings]=useState<Booking[]>([]),[allBookings,setAllBookings]=useState<Booking[]>([]),[pendingBookings,setPendingBookings]=useState<Booking[]>([]),[offers,setOffers]=useState<any[]>([]),[assignment,setAssignment]=useState<any>(null),[flash,setFlash]=useState(""),[loginError,setLoginError]=useState("");
+ const [bookings,setBookings]=useState<Booking[]>([]),[allBookings,setAllBookings]=useState<Booking[]>([]),[offers,setOffers]=useState<any[]>([]),[assignment,setAssignment]=useState<any>(null),[flash,setFlash]=useState(""),[loginError,setLoginError]=useState("");
  const [managerEmail,setManagerEmail]=useState(""),[customerEmail,setCustomerEmail]=useState(""),[staffBooking,setStaffBooking]=useState(false);
  const [offerForm,setOfferForm]=useState({title:"",description:"",type:"percent" as any,value:10,targetType:"all" as any,targetEmail:""});
  useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem("coworx-theme",theme)},[theme]);
  useEffect(()=>onAuthStateChanged(auth,async u=>{setUser(u);if(!u){setRole("User");return}try{setRole(await ensureUser(u))}catch(e:any){setFlash(e?.message||"Could not load account")}}),[]);
  useEffect(()=>{loadPricing().then(setPrices).catch(()=>{})},[]);
  useEffect(()=>{if(!user){setBookings([]);setOffers([]);setAssignment(null);return}const a=watchUser(user.uid,user.email||"",setBookings),b=watchOffers(user.email||"",setOffers),c=watchRoleAssignment(user.email||"",setAssignment);return()=>{a();b();c()}},[user]);
- useEffect(()=>{if(role==="User"){setAllBookings([]);setPendingBookings([]);return}const a=watchAllBookings(setAllBookings,e=>setFlash(`Booking list error: ${e?.message||"Permission denied"}`));const b=watchPendingBookings(setPendingBookings,e=>setFlash(`Pending booking queue error: ${e?.message||"Permission denied"}`));return()=>{a();b()}},[role]);
+ useEffect(()=>{if(role==="User"){setAllBookings([]);return}return watchAllBookings(setAllBookings,e=>setFlash(`Booking list error: ${e?.message||"Permission denied"}`))},[role]);
+ const pendingBookings=useMemo(()=>allBookings.filter(b=>b.status==="Pending"),[allBookings]);
  const booked=useMemo(()=>allBookings.filter(b=>b.date===date&&(b.status==="Confirmed"||(b.status==="Pending"&&(b.expiresAt?.toMillis?.()||0)>Date.now()))).map(b=>b.inventoryId),[allBookings,date]);
  const selected=seats.find(s=>s.id===seat),base=space==="cubicle"?(selected?.premium?prices.cubicle_premium:prices.cubicle_basic):space==="conference"?prices.conference_slot:prices.podcast_hourly,off=offers[0],discount=off?(off.type==="percent"?Math.round(base*off.value/100):Math.min(base,off.value)):0,total=Math.max(0,base-discount);
  const nav=(p:string)=>{if(p==="book"&&!user){setPage("login");setFlash("Google sign-in is required before booking.");return}setPage(p)};
