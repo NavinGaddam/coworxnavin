@@ -6,10 +6,11 @@ import {auth,db,isFirebaseConfigured} from "./firebase";
 import {DEFAULT_PRICING,Role,Space,Booking,today,addHours,withinBusinessHours,BUSINESS_START,BUSINESS_END} from "./pages/types";
 import {ensureUser,backfillUserBookings,loadPricing,savePricing,assignManager,acceptManager,createOffer,confirmBooking,revokeBooking,cancelBooking,createBooking,watchUser,watchAllBookings,watchPendingBookings,watchBookingLocks,watchOffers,watchRoleAssignment,watchUsers,saveUserProfile,loadDeskPricing,saveDeskPricing,loadWifi,saveWifi,loadUpi,saveUpi,getUserByEmail,markCheckIn,markCheckOut} from "./lib/firestore";
 import Home from "./pages/Home";import BookingPage from "./pages/Booking";import Amenities from "./pages/Amenities";import {Account,OffersPage,ManagerPage,AdminPage,LoginPage} from "./pages/Other";
-import "./styles.css";import "./mobile.css";
+import {COWORX_LOGO} from "./assets/logoData";
+import "./styles.css";import "./mobile.css";import "./branding.css";
 const active=(l:any)=>l.status==="Confirmed"||(l.status==="Pending"&&(l.expiresAt?.toMillis?.()||0)>Date.now());
 const maxHours=(locks:any[],space:Space,start:string)=>{let n=0;for(let i=0;i<10;i++){const slot=addHours(start,i);if(slot>=BUSINESS_END||locks.some(l=>l.inventoryId===space&&active(l)&&l.start===slot))break;n++;}return n;};
-const Logo=()=> <div className="coworxLogo" aria-label="coworx central"><span className="logoCo">co</span><span className="logoWorx">worx</span><small>central</small></div>;
+const Logo=()=> <img className="coworxLogoImage" src={COWORX_LOGO} alt="coworx central" />;
 export default function App(){
  const [user,setUser]=useState<any>(null),[role,setRole]=useState<Role>("User"),[page,setPage]=useState("home"),[menuOpen,setMenuOpen]=useState(false),[isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<=900),[theme,setTheme]=useState<"dark"|"light">((localStorage.getItem("coworx-theme") as any)||"dark");
  const [date,setDate]=useState(today()),[space,setSpace]=useState<Space>("desk"),[selectedSeats,setSelectedSeats]=useState<string[]>([]),[conf,setConf]=useState("09:00"),[meeting,setMeeting]=useState("09:00"),[pod,setPod]=useState("09:00"),[meetingDuration,setMeetingDuration]=useState(1),[confDuration,setConfDuration]=useState(1),[podDuration,setPodDuration]=useState(1),[prices,setPrices]=useState<any>(DEFAULT_PRICING),[deskPrices,setDeskPrices]=useState<any>({});
