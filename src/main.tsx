@@ -148,7 +148,7 @@ function App() {
 
       {page === "manager" && role !== "User" && <main className="dashboard"><h2>Operations Dashboard</h2>
         <div className="stats"><Stat n={`${25-booked.length}/25`} label="Available Seats"/><Stat n={String(booked.length)} label="Occupied / Locked"/><Stat n={String(pending.filter(p=>p.status==="Pending").length)} label="Pending Requests"/></div>
-        <section className="tableCard"><h3>Pending WhatsApp Bookings</h3>{pending.length===0?<p>No pending requests yet.</p>:pending.map(p=><div className="bookingItem" key={p.id}><span>{p.space} • {p.selectedSeat || p.conferenceSlot || p.podcastHour} • {p.date}</span><b>₹{p.total}</b><button onClick={()=>setPending(pending.map(x=>x.id===p.id?{...x,status:"Confirmed"}:x)}>Confirm Payment</button></div>)}</section>
+        <section className="tableCard"><h3>Pending WhatsApp Bookings</h3>{pending.length===0?<p>No pending requests yet.</p>:pending.map(p=><div className="bookingItem" key={p.id}><span>{p.space} • {p.selectedSeat || p.conferenceSlot || p.podcastHour} • {p.date}</span><b>₹{p.total}</b><button onClick={()=>setPending(pending.map(x=>x.id===p.id?{...x,status:"Confirmed"}:x))}>Confirm Payment</button></div>)}</section>
         <section className="tableCard"><h3>User Directory</h3><div className="bookingItem"><span><UserRound/> Demo User</span><select><option>User</option><option>Manager</option></select></div><p>Managers can edit users and assign Manager/User roles, but cannot assign Admin.</p></section>
       </main>}
 
