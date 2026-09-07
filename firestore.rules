@@ -3,55 +3,102 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn(){ return request.auth != null; }
     function userEmail(){ return signedIn() && request.auth.token.email != null ? request.auth.token.email.lower() : ""; }
-    function isAdmin(){ return userEmail() in ["vsshegur@gmail.com", "navingaddam2@gmail.com"]; }
+    function isOwnerAdmin(){ return userEmail() in ["vsshegur@gmail.com", "navingaddam2@gmail.com"]; }
+    function isAdmin(){
+      return isOwnerAdmin() || (
+        signedIn() && exists(/databases/$(database)/documents/settings/admins) &&
+        userEmail() in get(/databases/$(database)/documents/settings/admins).data.emails
+      );
+    }
     function isManager(){
       return isAdmin() || (
-        signedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "Manager"
       );
     }
+    function isSelf(uid){ return signedIn() && request.auth.uid == uid; }
+    function sameUserEmail(data){ return signedIn() && data.email != null && data.email.lower() == userEmail(); }
+    function safeUserUpdate(){
+      return request.resource.data.uid == resource.data.uid &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.role == resource.data.role;
+    }
+
     match /users/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isManager());
-      allow create: if signedIn() && request.auth.uid == uid;
-      allow update: if signedIn() && (request.auth.uid == uid || isAdmin() || (isManager() && request.resource.data.role != "Admin"));
+      allow read: if isSelf(uid) || isManager();
+      allow create: if isSelf(uid);
+      allow update: if isAdmin() || isSelf(uid) && safeUserUpdate() || isManager() && safeUserUpdate();
       allow delete: if isAdmin();
       match /bookings/{bookingId} {
-        allow read, create: if signedIn() && (request.auth.uid == uid || isManager());
-        allow update: if isManager() || (signedIn() && request.auth.uid == uid);
+        allow read, create: if isSelf(uid) || isManager();
+        allow update: if isManager() || isSelf(uid);
         allow delete: if isAdmin();
       }
     }
+
     match /roleAssignments/{id} {
       allow read: if isAdmin() || (signedIn() && id == userEmail());
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (signedIn() && id == userEmail() && request.resource.data.email == resource.data.email && request.resource.data.role == resource.data.role && (request.resource.data.status == "accepted" || request.resource.data.status == "declined"));
+      allow update: if isAdmin() || (signedIn() && id == userEmail() && request.resource.data.email == resource.data.email && request.resource.data.role == resource.data.role && request.resource.data.status in ["accepted", "declined"]);
     }
+
     match /notifications/{id} {
-      allow read, update: if signedIn() && (resource.data.recipientUid == request.auth.uid || isAdmin());
-      allow create, delete: if isAdmin();
+      allow read: if signedIn() && (resource.data.recipientUid == request.auth.uid || isAdmin());
+      allow create: if isAdmin() || isManager();
+      allow update: if signedIn() && (resource.data.recipientUid == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
     }
+
     match /settings/{id} {
-      allow read: if signedIn() && id != "wifi";
+      allow read: if signedIn() && id in ["pricing","deskPricing","upi","policy","operations","notificationTemplates","permissions","shifts","admins"];
       allow write: if isAdmin();
     }
     match /settings/wifi {
-      allow read, write: if isManager();
+      allow read: if isManager();
+      allow write: if isAdmin();
     }
+
     match /inventory/{id} {
       allow read: if signedIn();
       allow write: if isAdmin();
     }
+
     match /offers/{id} {
       allow read: if signedIn();
       allow create, update: if isManager();
       allow delete: if isAdmin();
     }
-    match /bookings/{id} {
-      allow read: if isAdmin() || isManager() || (signedIn() && (resource.data.userId == request.auth.uid || (resource.data.customerEmail != null && resource.data.customerEmail == userEmail())));
-      allow create: if isAdmin() || isManager() || (signedIn() && request.resource.data.userId == request.auth.uid);
-      allow update: if isAdmin() || isManager() || (signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.status == "Cancelled");
+    match /coupons/{id} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
     }
+    match /membershipPlans/{id} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+    match /addons/{id} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+    match /resourceBlocks/{id} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    match /adminLogs/{id} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() || isManager();
+      allow update, delete: if isAdmin();
+    }
+
+    match /bookings/{id} {
+      allow read: if isAdmin() || isManager() || (signedIn() && (resource.data.userId == request.auth.uid || (resource.data.customerEmail != null && resource.data.customerEmail.lower() == userEmail())));
+      allow create: if isAdmin() || isManager() || (signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.status == "Pending");
+      allow update: if isAdmin() || isManager() || (signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.status == "Cancelled");
+      allow delete: if isAdmin();
+    }
+
     match /bookingLocks/{id} {
       allow read: if signedIn();
       allow create: if isAdmin() || isManager() || (signedIn() && request.resource.data.userId == request.auth.uid);
@@ -68,4 +115,4 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || isManager() || (signedIn() && resource.data.userId == request.auth.uid);
     }
   }
-}
+} 
