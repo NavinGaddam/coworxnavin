@@ -5,10 +5,11 @@
  * These are browser/client config values. Never paste a Firebase service-account private key here.
  */
 export const firebaseConfig = {
-  apiKey: "PASTE_FIREBASE_API_KEY_HERE",
-  authDomain: "PASTE_PROJECT.firebaseapp.com",
-  projectId: "PASTE_PROJECT_ID_HERE",
-  storageBucket: "PASTE_PROJECT.firebasestorage.app",
-  messagingSenderId: "PASTE_MESSAGING_SENDER_ID_HERE",
-  appId: "PASTE_FIREBASE_APP_ID_HERE"
+  apiKey: "AIzaSyA-T6ANpScfpqHm7qkxoOyqX7et_a8JmeM",
+  authDomain: "coworxnavin.firebaseapp.com",
+  projectId: "coworxnavin",
+  storageBucket: "coworxnavin.firebasestorage.app",
+  messagingSenderId: "837654985729",
+  appId: "1:837654985729:web:ee9668905eef0cf817d400",
+  measurementId: "G-XTEX9CPHL3"
 };
