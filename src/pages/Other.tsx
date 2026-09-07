@@ -3,7 +3,7 @@ import {CalendarDays,CheckCircle2,Clock3,Copy,ExternalLink,FileText,Gift,LogIn,L
 import {ADMIN_EMAILS,Booking,Offer} from "./types";
 import {watchMembershipPlans,extendBooking} from "../lib/firestore";
 import OperationsSuite from "./OperationsSuite";
-import "./ops.css";import "./ui-fixes.css";
+import "./ops.css";import "./ui-fixes.css";import "./booking-enhancements.css";
 const wa=(phone:string)=>{const d=(phone||"").replace(/\D/g,"");return d.length===10?`91${d}`:d};
 const activePending=(b:any)=>b.status==="Pending"&&(b.expiresAt?.toMillis?.()||0)>Date.now();
 const remainingMs=(b:any)=>Math.max(0,(b.expiresAt?.toMillis?.()||0)-Date.now());
