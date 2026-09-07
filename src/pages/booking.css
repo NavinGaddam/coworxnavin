@@ -3,3 +3,8 @@
 .bookingHoursNotice{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px!important;margin-top:12px!important;line-height:1.45!important;max-width:900px!important}
 .bookingHoursNotice span{display:inline-flex;align-items:center;gap:5px;min-width:0}
 @media(max-width:700px){.bookingHoursNotice{align-items:flex-start!important;flex-direction:column!important;gap:5px!important}}
+
+/* Staff booking header is a content block, not the global app header. */
+.bookingIntro{position:relative!important;height:auto!important;min-height:0!important;display:grid!important;align-items:end!important;overflow:visible!important;background:transparent!important;border:0!important;padding:0!important;backdrop-filter:none!important;top:auto!important;z-index:1!important}
+.bookingIntro .customerBox{position:relative!important;inset:auto!important;z-index:1!important}
+@media(max-width:900px){.bookingIntro{display:grid!important}}
