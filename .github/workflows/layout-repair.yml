@@ -12,47 +12,50 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Repair App routing and CSS include
+      - name: Repair routing and remove legacy layout override
         shell: python
         run: |
           from pathlib import Path
+          import re
+
           app = Path('src/App.tsx')
           text = app.read_text(encoding='utf-8')
-          # Ensure Operations is a separate admin page, not nested under AdminPage.
+
+          # Remove any accidentally embedded OperationsSuite from AdminPage.
+          other = Path('src/pages/Other.tsx')
+          other_text = other.read_text(encoding='utf-8')
+          other_text = re.sub(r'<OperationsSuite\b[^>]*/>', '', other_text)
+          other.write_text(other_text, encoding='utf-8')
+
+          # Ensure a dedicated Admin-only Operations page exists.
+          route = '{page==="operations"&&user&&role==="Admin"&&<main className="simple"><OperationsSuite users={users} bookings={staffBookings} admins={admins} adminLogs={adminLogs} actorUid={user.uid} actorEmail={user.email||""} onFlash={setFlash}/></main>}'
           marker = '{page==="admin"&&user&&role==="Admin"&&<AdminPage'
-          if 'page==="operations"&&user&&role==="Admin"&&<main className="simple"><OperationsSuite' not in text:
-              insert = '{page==="operations"&&user&&role==="Admin"&&<main className="simple"><OperationsSuite users={users} bookings={staffBookings} admins={admins} adminLogs={adminLogs} actorUid={user.uid} actorEmail={user.email||""} onFlash={setFlash}/></main>}'
-              if marker not in text:
-                  raise SystemExit('Could not find Admin route marker')
-              text = text.replace(marker, insert + ' ' + marker, 1)
-          # Remove the embedded OperationsSuite from AdminPage if present.
-          embedded = '<OperationsSuite users={users} bookings={allBookings} admins={adminLogs ? admins : admins} adminLogs={adminLogs} actorUid={""} actorEmail={""} onFlash={(m:string)=>window.alert(m)} />'
-          text = text.replace(embedded, '')
-          generic = '<OperationsSuite users={users} bookings={allBookings} admins={admins} adminLogs={adminLogs} actorUid={""} actorEmail={""} onFlash={(m:string)=>window.alert(m)} />'
-          text = text.replace(generic, '')
+          text = re.sub(r'\{page==="operations"&&user&&role==="Admin"&&<main className="simple">.*?</main>\}', '', text, count=1)
+          if marker not in text:
+              raise SystemExit('Could not find Admin route marker')
+          text = text.replace(marker, route + ' ' + marker, 1)
           app.write_text(text, encoding='utf-8')
 
           idx = Path('index.html')
-          html = idx.read_text(encoding='utf-8')
-          html = html.replace('<link rel="stylesheet" href="/design-qa.css"/>','')
+          html = idx.read_text(encoding='utf-8').replace('<link rel="stylesheet" href="/design-qa.css"/>','')
           idx.write_text(html, encoding='utf-8')
 
           legacy = Path('public/design-qa.css')
           if legacy.exists():
               legacy.unlink()
-      - name: Verify source is sane
+      - name: Build
         shell: bash
         run: |
-          grep -q 'page==="operations"&&user&&role==="Admin"' src/App.tsx
-          ! grep -q 'design-qa.css' index.html
-          ! grep -q 'Everything in one control room' src/pages/Other.tsx
-      - name: Commit and remove workflow
+          npm install
+          npm run build
+      - name: Commit fix and delete workflow
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/App.tsx index.html public/design-qa.css .github/workflows/layout-repair.yml
+          git add src/App.tsx src/pages/Other.tsx index.html public/design-qa.css .github/workflows/layout-repair.yml
           git rm --cached .github/workflows/layout-repair.yml 2>/dev/null || true
           git add -A
-          git commit -m 'Separate operations page and restore clean responsive layout' || exit 0
+          git diff --cached --quiet && exit 0
+          git commit -m 'Separate operations page and restore responsive spacing'
           git push
