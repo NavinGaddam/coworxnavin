@@ -82,6 +82,14 @@
 }
 .app .mobileMenu>button:hover,.app .mobileMenu>button.navActive{background:var(--soft)!important;color:var(--accent)!important}
 .app .mobileMenu>button.navActive::after{display:none!important}
+.app .mobileMenuFoot{margin-top:auto!important;padding-top:14px!important;border-top:1px solid var(--line)!important;display:flex!important;flex-direction:column!important;gap:10px!important}
+.app .mobileMenuAccount b{display:block!important;font-size:13px!important;color:var(--text)!important}
+.app .mobileMenuAccount small{font-size:11px!important;color:var(--muted)!important;overflow-wrap:anywhere!important}
+.app .mobileSignOut{
+  display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;
+  height:44px!important;border:1px solid rgba(224,85,77,.35)!important;border-radius:11px!important;
+  background:rgba(224,85,77,.1)!important;color:#e0554d!important;font-weight:800!important;font-size:13px!important;
+}
 
 /* ---------- Operations overview hero: Live now / Attention needed / Today ---------- */
 .app .opsHero{
@@ -117,6 +125,56 @@
   .app .opsHeroCol:first-child{border-top:0!important}
 }
 
+/* ---------- Offers & Memberships page: sections had zero gap between
+   them and membership items had no padding/card styling ---------- */
+.app main.simple{padding:32px 24px!important;max-width:960px!important;margin:0 auto!important}
+.app main.simple>h2{margin:6px 0 24px!important}
+.app .offerCards{margin-bottom:26px!important}
+.app .membershipPublic{
+  margin-top:6px!important;padding:24px!important;border:1px solid var(--line)!important;
+  border-radius:18px!important;background:var(--card)!important;box-shadow:var(--shadow)!important;
+}
+.app .membershipPublic>div>p{margin:6px 0 0!important;color:var(--muted)!important;font-size:13px!important}
+.app .membershipGrid{
+  display:grid!important;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))!important;
+  gap:14px!important;margin-top:18px!important;
+}
+.app .membershipGrid article{
+  display:grid!important;gap:6px!important;padding:18px!important;
+  border:1px solid var(--line)!important;border-radius:14px!important;background:var(--soft)!important;
+}
+.app .membershipGrid article b{font-size:15px!important;color:var(--text)!important}
+.app .membershipGrid article span{font-size:12px!important;color:var(--muted)!important;line-height:1.5!important}
+.app .membershipGrid article strong{font-size:19px!important;color:var(--accent)!important;margin-top:2px!important}
+.app .membershipGrid article small{font-size:11px!important;color:var(--muted)!important}
+
+/* ---------- Create-offer form: was a rigid 4-column grid that squeezed
+   the title input and wrapped the description into an unreadable
+   narrow column. Reflowed into title/discount/audience + a full-width
+   description row, using CSS order so no TSX changes were needed. ---------- */
+.app .offerFormGrid{
+  display:grid!important;
+  grid-template-columns:1fr 1fr 1fr!important;
+  gap:16px!important;
+  align-items:start!important;
+}
+.app .offerFormGrid>label:nth-child(1){order:1!important}
+.app .offerFormGrid>label:nth-child(3){order:2!important}
+.app .offerFormGrid>label:nth-child(4){order:3!important}
+.app .offerFormGrid>label:nth-child(2){order:4!important;grid-column:1/-1!important}
+.app .offerFormGrid>label.full{order:5!important;grid-column:1/-1!important}
+.app .offerFormGrid label{display:grid!important;gap:7px!important;font-size:11px!important;font-weight:800!important;color:var(--muted)!important;text-transform:uppercase!important;letter-spacing:.6px!important}
+.app .offerFormGrid input,.app .offerFormGrid select,.app .offerFormGrid textarea{
+  width:100%!important;padding:12px 13px!important;border:1px solid var(--line)!important;border-radius:11px!important;
+  background:var(--soft)!important;color:var(--text)!important;outline:none!important;box-sizing:border-box!important;font-size:13px!important;
+}
+.app .offerFormGrid textarea{min-height:76px!important;resize:vertical!important}
+.app .inputPair{display:grid!important;grid-template-columns:1fr 118px!important;gap:8px!important}
+@media (max-width:760px){
+  .app .offerFormGrid{grid-template-columns:1fr!important}
+  .app .offerFormGrid>label:nth-child(1),.app .offerFormGrid>label:nth-child(3),.app .offerFormGrid>label:nth-child(4){grid-column:1/-1!important}
+}
+
 /* ---------- Home screen: greeting, next booking, live status, offer teaser ---------- */
 .app .homeGreeting{
   border:1px solid var(--line)!important;
@@ -144,7 +202,9 @@
   transition:border-color .16s ease,transform .16s ease!important;
 }
 .app .nextBookingCard:hover{border-color:var(--accent)!important;transform:translateY(-1px)!important}
-.app .nextBookingCard h3{margin:5px 0 3px!important;font-size:19px!important}
+.app .nextBookingCard{color:var(--text)!important}
+.app .nextBookingCard .eyebrow{color:var(--accent)!important}
+.app .nextBookingCard h3{margin:5px 0 3px!important;font-size:19px!important;color:var(--text)!important}
 .app .nextBookingCard p{margin:0!important;color:var(--muted)!important;font-size:13px!important}
 .app .nextBookingCta{display:flex!important;align-items:center!important;gap:4px!important;font-size:12px!important;font-weight:800!important;color:var(--accent)!important;white-space:nowrap!important}
 .app .nextBookingEmpty{
@@ -286,6 +346,9 @@
   background:var(--soft)!important;
 }
 .app .desktopNav .staffNav:nth-last-child(3){margin-left:12px!important}
+@media (max-width:900px){
+  .app .desktopNav{display:none!important}
+}
 
 /* ---------- Mobile menu, same active-tab treatment ---------- */
 .app .mobileMenu button.navActive{position:relative!important;padding-left:24px!important}
