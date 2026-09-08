@@ -1,0 +1,331 @@
+/* =========================================================================
+   NAV / PROFILE-BUTTON / PROFILE-MODAL FIX
+   Consolidates rules that were previously duplicated 2-7x across
+   branding.css, repair.css, mobile.css, ui-fixes.css and
+   booking-enhancements.css with conflicting values. This file is the
+   single source of truth for these three components — do not add
+   further overrides for them in other stylesheets.
+   Selectors are prefixed with ".app" to safely out-specificity the old
+   0,1,0-specificity !important rules regardless of CSS load order.
+   ========================================================================= */
+
+/* ---------- Real logo (replaces old CSS-generated text wordmark) ---------- */
+.app .brand{
+  display:flex!important;
+  align-items:center!important;
+  width:auto!important;
+  min-width:0!important;
+  height:auto!important;
+  padding:0!important;
+  margin:0!important;
+  background:transparent!important;
+  border:0!important;
+}
+.app .brandLogoImg{
+  height:44px!important;
+  width:auto!important;
+  max-width:none!important;
+  display:block!important;
+  object-fit:contain!important;
+}
+@media (max-width:900px){
+  .app .brandLogoImg{height:38px!important}
+}
+@media (max-width:620px){
+  .app .brandLogoImg{height:34px!important}
+}
+
+/* Primary buttons now sit on the logo's true orange; force readable
+   white text/icon regardless of which older rule wins the cascade. */
+.app .primary{
+  background:var(--accent)!important;
+  border-color:var(--accent)!important;
+  color:#fff!important;
+}
+.app .primary:hover{filter:brightness(1.06)!important}
+
+/* ---------- Header ---------- */
+.app header{
+  height:72px!important;
+  padding:0 24px!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:20px!important;
+  background:var(--bg)!important;
+  border-bottom:1px solid var(--line)!important;
+  box-sizing:border-box!important;
+  position:sticky!important;
+  top:0!important;
+  z-index:20!important;
+  backdrop-filter:blur(14px)!important;
+  -webkit-backdrop-filter:blur(14px)!important;
+}
+
+/* ---------- Desktop nav + "which tab am I on" indicator ---------- */
+.app .desktopNav{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:4px!important;
+  flex:1 1 auto!important;
+  min-width:0!important;
+}
+.app .desktopNav button{
+  height:40px!important;
+  padding:0 14px!important;
+  border:1px solid transparent!important;
+  border-radius:10px!important;
+  background:transparent!important;
+  color:var(--muted)!important;
+  font-size:14px!important;
+  font-weight:700!important;
+  white-space:nowrap!important;
+  position:relative!important;
+  transition:background .16s ease,color .16s ease!important;
+}
+.app .desktopNav button:hover{
+  color:var(--text)!important;
+  background:var(--soft)!important;
+}
+/* Single, unambiguous "current tab" style: filled pill + accent underline */
+.app .desktopNav .navActive,
+.app .mobileMenu .navActive{
+  color:var(--text)!important;
+  background:var(--soft)!important;
+  border-color:var(--line)!important;
+  font-weight:800!important;
+  box-shadow:none!important;
+}
+.app .desktopNav .navActive::after{
+  content:"";
+  position:absolute;
+  left:14px;
+  right:14px;
+  bottom:-1px;
+  height:2px;
+  border-radius:2px;
+  background:var(--accent);
+}
+.app .desktopNav .staffNav{
+  color:var(--muted)!important;
+  background:transparent!important;
+}
+.app .desktopNav .staffNav:hover{
+  color:var(--text)!important;
+  background:var(--soft)!important;
+}
+.app .desktopNav .staffNav:nth-last-child(3){margin-left:12px!important}
+
+/* ---------- Mobile menu, same active-tab treatment ---------- */
+.app .mobileMenu button.navActive{position:relative!important;padding-left:24px!important}
+.app .mobileMenu button.navActive::before{
+  content:"";
+  position:absolute;
+  left:10px;top:50%;
+  width:6px;height:6px;
+  border-radius:50%;
+  background:var(--accent);
+  transform:translateY(-50%);
+}
+
+/* ---------- Email / profile button ----------
+   Previously forced to a 42x42 icon-only square with the email text
+   permanently hidden (span{display:none!important}). Now shows the
+   truncated email on tablet/desktop and collapses to icon-only only
+   on genuinely narrow phones. */
+.app .profileChip{
+  cursor:pointer!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:7px!important;
+  height:40px!important;
+  max-width:220px!important;
+  padding:0 14px!important;
+  border:1px solid var(--line)!important;
+  border-radius:11px!important;
+  background:var(--soft)!important;
+  color:var(--text)!important;
+  font:inherit!important;
+  font-size:12px!important;
+  font-weight:700!important;
+  white-space:nowrap!important;
+  box-shadow:none!important;
+}
+.app .profileChip:hover{
+  background:var(--card)!important;
+  border-color:var(--accent)!important;
+}
+.app .profileChip span{
+  display:inline-block!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+  max-width:160px!important;
+}
+@media (max-width:480px){
+  .app .profileChip{
+    width:40px!important;
+    min-width:40px!important;
+    max-width:40px!important;
+    padding:0!important;
+    justify-content:center!important;
+  }
+  .app .profileChip span{display:none!important}
+}
+
+/* ---------- Profile settings modal ----------
+   Card/head/grid/footer used to be defined twice at the base level
+   with different sizes; this is now the single definition, with a
+   media query handling the mobile layout instead of a second
+   conflicting base rule. */
+.app .profileSettingsBackdrop{
+  position:fixed!important;
+  inset:0!important;
+  display:grid!important;
+  place-items:center!important;
+  padding:24px!important;
+  background:rgba(4,7,11,.76)!important;
+  backdrop-filter:blur(14px)!important;
+  -webkit-backdrop-filter:blur(14px)!important;
+  z-index:1000!important;
+  overflow:auto!important;
+  box-sizing:border-box!important;
+}
+.app .profileSettingsCard{
+  position:relative!important;
+  width:min(640px,calc(100vw - 40px))!important;
+  max-height:min(760px,calc(100vh - 48px))!important;
+  overflow:auto!important;
+  margin:auto!important;
+  padding:28px!important;
+  border:1px solid var(--line)!important;
+  border-radius:20px!important;
+  background:var(--card)!important;
+  color:var(--text)!important;
+  box-shadow:0 40px 120px rgba(0,0,0,.45)!important;
+  box-sizing:border-box!important;
+}
+.app .profileSettingsHead{
+  position:relative!important;
+  display:block!important;
+  padding-right:56px!important;
+  margin-bottom:20px!important;
+}
+.app .profileSettingsHead h3{
+  font-size:24px!important;
+  line-height:1.15!important;
+  margin:4px 0 8px!important;
+  color:var(--text)!important;
+}
+.app .profileSettingsHead p{
+  font-size:13px!important;
+  line-height:1.6!important;
+  margin:0!important;
+  color:var(--muted)!important;
+  max-width:520px!important;
+}
+.app .profileSettingsHead>button{
+  position:absolute!important;
+  top:0!important;
+  right:0!important;
+  width:38px!important;
+  height:38px!important;
+  display:grid!important;
+  place-items:center!important;
+  border:1px solid var(--line)!important;
+  border-radius:10px!important;
+  background:var(--soft)!important;
+  color:var(--text)!important;
+  font-weight:700!important;
+  padding:0!important;
+}
+.app .profileSettingsHead>button:hover{
+  border-color:var(--accent)!important;
+  color:var(--accent)!important;
+}
+.app .profileIdentity{
+  display:grid!important;
+  gap:3px!important;
+  padding:14px 16px!important;
+  margin:0 0 20px!important;
+  border:1px solid var(--line)!important;
+  border-radius:14px!important;
+  background:var(--soft)!important;
+}
+.app .profileIdentity strong{font-size:15px!important;color:var(--text)!important}
+.app .profileIdentity span{font-size:12px!important;color:var(--muted)!important;overflow-wrap:anywhere!important}
+.app .profileSettingsGrid{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:14px!important;
+  width:100%!important;
+}
+.app .profileSettingsGrid label{
+  display:grid!important;
+  gap:7px!important;
+  color:var(--muted)!important;
+  font-size:12px!important;
+  font-weight:700!important;
+}
+.app .profileSettingsGrid input,
+.app .profileSettingsGrid select{
+  width:100%!important;
+  height:46px!important;
+  padding:0 13px!important;
+  border:1px solid var(--line)!important;
+  border-radius:12px!important;
+  background:var(--soft)!important;
+  color:var(--text)!important;
+  outline:none!important;
+  font:inherit!important;
+  font-size:13px!important;
+  box-sizing:border-box!important;
+}
+.app .profileSettingsGrid input:focus,
+.app .profileSettingsGrid select:focus{
+  border-color:var(--accent)!important;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)!important;
+}
+.app .profileSettingsFooter{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:18px!important;
+  margin-top:22px!important;
+  padding-top:18px!important;
+  border-top:1px solid var(--line)!important;
+}
+.app .profileSettingsFooter small{
+  font-size:11px!important;
+  line-height:1.45!important;
+  color:var(--muted)!important;
+  max-width:400px!important;
+}
+.app .profileSettingsFooter .primary{
+  height:44px!important;
+  padding:0 18px!important;
+  border-radius:11px!important;
+  font-size:13px!important;
+  font-weight:800!important;
+  white-space:nowrap!important;
+}
+@media (max-width:640px){
+  .app .profileSettingsBackdrop{padding:14px!important}
+  .app .profileSettingsCard{
+    width:min(560px,calc(100vw - 28px))!important;
+    max-height:calc(100vh - 28px)!important;
+    padding:20px!important;
+    border-radius:18px!important;
+  }
+  .app .profileSettingsHead{padding-right:48px!important}
+  .app .profileSettingsHead h3{font-size:20px!important}
+  .app .profileIdentity{margin-bottom:16px!important}
+  .app .profileSettingsGrid{grid-template-columns:1fr!important;gap:12px!important}
+  .app .profileSettingsFooter{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:12px!important;
+  }
+  .app .profileSettingsFooter small{max-width:none!important}
+  .app .profileSettingsFooter .primary{width:100%!important}
+}

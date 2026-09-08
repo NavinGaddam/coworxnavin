@@ -6,11 +6,11 @@ import {auth,db,isFirebaseConfigured} from "./firebase";
 import {DEFAULT_PRICING,Role,Space,Booking,today,addHours,withinBusinessHours,BUSINESS_START,BUSINESS_END} from "./pages/types";
 import {ensureUser,backfillUserBookings,loadPricing,savePricing,assignManager,removeManager,addAdmin,removeAdmin,acceptManager,createOffer,confirmBooking,revokeBooking,cancelBooking,createBooking,watchUser,watchAllBookings,watchPendingBookings,watchBookingLocks,watchOffers,watchRoleAssignment,watchUsers,watchAdmins,watchAdminLogs,saveUserProfile,loadDeskPricing,saveDeskPricing,loadWifi,saveWifi,loadUpi,saveUpi,getUserByEmail,markCheckIn,markCheckOut} from "./lib/firestore";
 import Home from "./pages/Home";import BookingPage from "./pages/Booking";import Amenities from "./pages/Amenities";import {Account,OffersPage,ManagerPage,AdminPage,LoginPage} from "./pages/Other";import OperationsSuite from "./pages/OperationsSuite";
-import {COWORX_LOGO} from "./assets/logoData";
+import coworxLogoFull from "./assets/coworx-logo-full.png";
 import "./styles.css";import "./mobile.css";import "./branding.css";
 const active=(l:any)=>l.status==="Confirmed"||(l.status==="Pending"&&(l.expiresAt?.toMillis?.()||0)>Date.now());
 const maxHours=(locks:any[],space:Space,start:string)=>{let n=0;for(let i=0;i<10;i++){const slot=addHours(start,i);if(slot>=BUSINESS_END||locks.some(l=>l.inventoryId===space&&active(l)&&l.start===slot))break;n++;}return n;};
-const Logo=()=> <span className="coworxLogoWordmark" aria-label="coworx central"><span><i>co</i>worx</span><small>CENTRAL</small></span>;
+const Logo=()=> <img className="brandLogoImg" src={coworxLogoFull} alt="coworx central" />;
 export default function App(){
  const [user,setUser]=useState<any>(null),[role,setRole]=useState<Role>("User"),[page,setPage]=useState("home"),[menuOpen,setMenuOpen]=useState(false),[isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<=900),[theme,setTheme]=useState<"dark"|"light">((localStorage.getItem("coworx-theme") as any)||"dark");
  const [profileOpen,setProfileOpen]=useState(false),[profileForm,setProfileForm]=useState<any>({mobile:"",gender:"",dob:"",profession:""}),[profileSaving,setProfileSaving]=useState(false);

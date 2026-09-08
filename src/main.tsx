@@ -5,4 +5,5 @@ import "./styles.css";
 import "./repair.css";
 import "./pano.css";
 import "./branding.css";
+import "./nav-profile-fix.css";
 createRoot(document.getElementById("root")!).render(<React.StrictMode><App/></React.StrictMode>);
