@@ -44,6 +44,138 @@
 }
 .app .primary:hover{filter:brightness(1.06)!important}
 
+/* ---------- Operations overview hero: Live now / Attention needed / Today ---------- */
+.app .opsHero{
+  display:grid!important;
+  grid-template-columns:1fr 1.4fr 1fr!important;
+  gap:0!important;
+  border:1px solid var(--line)!important;
+  border-radius:18px!important;
+  background:var(--card)!important;
+  box-shadow:var(--shadow)!important;
+  margin-bottom:20px!important;
+  overflow:hidden!important;
+}
+.app .opsHeroCol{padding:20px 22px!important;border-left:1px solid var(--line)!important}
+.app .opsHeroCol:first-child{border-left:0!important}
+.app .opsHeroStats{display:flex!important;gap:20px!important;margin-top:12px!important;flex-wrap:wrap!important}
+.app .opsHeroStats div{display:flex!important;flex-direction:column!important;gap:2px!important}
+.app .opsHeroStats strong{font-size:26px!important;line-height:1!important}
+.app .opsHeroStats span{font-size:11px!important;color:var(--muted)!important}
+.app .opsAttention{list-style:none!important;margin:12px 0 0!important;padding:0!important;display:flex!important;flex-direction:column!important;gap:9px!important}
+.app .opsAttention li{display:flex!important;align-items:center!important;gap:9px!important;font-size:13px!important;color:var(--text)!important}
+.app .opsAttention i{width:8px!important;height:8px!important;border-radius:50%!important;flex:0 0 8px!important;background:var(--muted)!important}
+.app .opsAttention li.warn i{background:#e0a52c!important}
+.app .opsAttention li.info i{background:var(--blue)!important}
+.app .opsAttention li.danger i{background:#e0554d!important}
+.app .opsAttentionEmpty{display:flex!important;align-items:center!important;gap:7px!important;margin-top:12px!important;font-size:13px!important;color:var(--muted)!important}
+.app .opsHeroToday{display:grid!important;grid-template-columns:auto auto!important;column-gap:14px!important;row-gap:2px!important;margin-top:12px!important;align-items:baseline!important}
+.app .opsHeroToday strong{font-size:20px!important}
+.app .opsHeroToday small{font-size:11px!important;color:var(--muted)!important}
+@media (max-width:900px){
+  .app .opsHero{grid-template-columns:1fr!important}
+  .app .opsHeroCol{border-left:0!important;border-top:1px solid var(--line)!important}
+  .app .opsHeroCol:first-child{border-top:0!important}
+}
+
+/* ---------- Home screen: greeting, next booking, live status, offer teaser ---------- */
+.app .homeGreeting{
+  border:1px solid var(--line)!important;
+  border-radius:20px!important;
+  background:var(--card)!important;
+  box-shadow:var(--shadow)!important;
+  padding:24px!important;
+  margin-bottom:36px!important;
+  animation:coworxFadeIn .35s ease both!important;
+}
+.app .homeGreeting h2{margin:6px 0 0!important;font-size:24px!important;letter-spacing:-.02em!important}
+.app .quickPickRow{display:flex!important;gap:10px!important;flex-wrap:wrap!important;margin:16px 0 20px!important}
+.app .quickPick{
+  display:flex!important;align-items:center!important;gap:8px!important;
+  padding:10px 16px!important;border:1px solid var(--line)!important;border-radius:12px!important;
+  background:var(--soft)!important;color:var(--text)!important;font-weight:700!important;font-size:13px!important;
+  transition:transform .14s ease,border-color .14s ease,background .14s ease!important;
+}
+.app .quickPick:hover{border-color:var(--accent)!important;transform:translateY(-1px)!important}
+.app .homeGreetingGrid{display:grid!important;grid-template-columns:1.3fr 1fr!important;gap:14px!important}
+.app .nextBookingCard{
+  display:flex!important;align-items:center!important;justify-content:space-between!important;gap:14px!important;
+  text-align:left!important;padding:18px 20px!important;border:1px solid var(--line)!important;border-radius:16px!important;
+  background:linear-gradient(135deg,var(--soft),transparent)!important;
+  transition:border-color .16s ease,transform .16s ease!important;
+}
+.app .nextBookingCard:hover{border-color:var(--accent)!important;transform:translateY(-1px)!important}
+.app .nextBookingCard h3{margin:5px 0 3px!important;font-size:19px!important}
+.app .nextBookingCard p{margin:0!important;color:var(--muted)!important;font-size:13px!important}
+.app .nextBookingCta{display:flex!important;align-items:center!important;gap:4px!important;font-size:12px!important;font-weight:800!important;color:var(--accent)!important;white-space:nowrap!important}
+.app .nextBookingEmpty{
+  display:flex!important;align-items:center!important;gap:9px!important;padding:18px 20px!important;
+  border:1px dashed var(--line)!important;border-radius:16px!important;color:var(--muted)!important;font-size:13px!important;
+}
+.app .liveStatusCard{padding:18px 20px!important;border:1px solid var(--line)!important;border-radius:16px!important;background:var(--soft)!important}
+.app .liveStatusRow{display:flex!important;align-items:baseline!important;gap:6px!important;flex-wrap:wrap!important;margin-top:10px!important}
+.app .liveStatusRow strong{font-size:20px!important}
+.app .liveStatusRow span{font-size:11px!important;color:var(--muted)!important;margin-right:8px!important}
+.app .offerTeaser{
+  display:flex!important;align-items:center!important;gap:12px!important;width:100%!important;margin-top:14px!important;
+  padding:14px 16px!important;border:1px solid rgba(255,116,32,.35)!important;border-radius:14px!important;
+  background:linear-gradient(135deg,rgba(255,116,32,.12),rgba(255,116,32,.02))!important;color:var(--text)!important;
+  transition:transform .14s ease!important;
+}
+.app .offerTeaser:hover{transform:translateY(-1px)!important}
+.app .offerTeaser svg{color:var(--accent)!important;flex:0 0 auto!important}
+.app .offerTeaser div{flex:1!important;text-align:left!important}
+.app .offerTeaser b{display:block!important;font-size:14px!important}
+.app .offerTeaser span{font-size:11px!important;color:var(--muted)!important}
+@media (max-width:700px){
+  .app .homeGreetingGrid{grid-template-columns:1fr!important}
+}
+@keyframes coworxFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* Subtle motion on existing cards, buttons */
+.app .card{transition:transform .18s ease,box-shadow .18s ease!important}
+.app button{transition:transform .12s ease,background .14s ease,border-color .14s ease,color .14s ease!important}
+.app .primary:active,.app .ghost:active,.app .quickPick:active{transform:scale(.97)!important}
+
+/* ---------- Profile dropdown menu ---------- */
+.app .profileMenuWrap{position:relative!important}
+.app .menuScrim{position:fixed!important;inset:0!important;z-index:29!important;background:transparent!important}
+.app .profileMenu{
+  position:absolute!important;top:calc(100% + 8px)!important;right:0!important;z-index:30!important;
+  width:230px!important;padding:8px!important;border:1px solid var(--line)!important;border-radius:14px!important;
+  background:var(--card)!important;box-shadow:0 20px 50px rgba(0,0,0,.28)!important;
+  display:flex!important;flex-direction:column!important;gap:2px!important;
+  animation:coworxFadeIn .14s ease both!important;
+}
+.app .profileMenuHead{padding:8px 10px 10px!important;border-bottom:1px solid var(--line)!important;margin-bottom:4px!important}
+.app .profileMenuHead b{display:block!important;font-size:13px!important;color:var(--text)!important}
+.app .profileMenuHead small{font-size:11px!important;color:var(--muted)!important;overflow-wrap:anywhere!important}
+.app .profileMenu button{
+  display:flex!important;align-items:center!important;gap:9px!important;width:100%!important;
+  padding:9px 10px!important;border:0!important;border-radius:9px!important;background:transparent!important;
+  color:var(--text)!important;font-size:13px!important;font-weight:600!important;text-align:left!important;
+}
+.app .profileMenu button:hover{background:var(--soft)!important}
+.app .profileMenu button.danger{color:#e0554d!important}
+
+/* ---------- Mobile bottom navigation ---------- */
+.app .bottomNav{
+  position:fixed!important;left:0!important;right:0!important;bottom:0!important;z-index:25!important;
+  display:flex!important;background:var(--card)!important;border-top:1px solid var(--line)!important;
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom))!important;
+  backdrop-filter:blur(14px)!important;-webkit-backdrop-filter:blur(14px)!important;
+}
+.app .bottomNav button{
+  flex:1 1 0!important;display:flex!important;flex-direction:column!important;align-items:center!important;gap:3px!important;
+  padding:6px 2px!important;border:0!important;background:transparent!important;color:var(--muted)!important;
+}
+.app .bottomNav button span{font-size:10px!important;font-weight:700!important}
+.app .bottomNav button.navActive{color:var(--accent)!important}
+.app .bottomNav button.navActive::after{display:none!important}
+@media (max-width:900px){
+  .app{padding-bottom:64px!important}
+}
+
 /* ---------- Header ---------- */
 .app header{
   height:72px!important;
