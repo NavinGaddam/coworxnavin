@@ -44,6 +44,45 @@
 }
 .app .primary:hover{filter:brightness(1.06)!important}
 
+/* ---------- Mobile menu: clean slide-in drawer with backdrop ----------
+   Previously .mobileMenu was defined 6 different times across mobile.css
+   and repair.css (some hiding it, some floating it top-right with no
+   backdrop), so it rendered as a small box floating over page content
+   instead of a real drawer. This is now the single definition. */
+.app .mobileMenuScrim{
+  position:fixed!important;inset:0!important;z-index:98!important;
+  background:rgba(4,7,11,.55)!important;backdrop-filter:blur(2px)!important;
+  opacity:0!important;visibility:hidden!important;pointer-events:none!important;
+  transition:opacity .2s ease,visibility .2s!important;
+}
+.app .mobileMenuScrim.open{opacity:1!important;visibility:visible!important;pointer-events:auto!important}
+.app .mobileMenu{
+  position:fixed!important;top:0!important;right:0!important;bottom:0!important;left:auto!important;
+  z-index:99!important;width:min(320px,84vw)!important;height:100vh!important;max-height:none!important;
+  display:flex!important;flex-direction:column!important;gap:3px!important;
+  padding:14px!important;overflow:auto!important;box-sizing:border-box!important;
+  background:var(--card)!important;border:0!important;border-left:1px solid var(--line)!important;
+  border-radius:0!important;box-shadow:-24px 0 60px rgba(0,0,0,.35)!important;
+  transform:translateX(100%)!important;transition:transform .22s ease!important;
+  opacity:1!important;visibility:visible!important;pointer-events:auto!important;
+}
+.app .mobileMenu.open{transform:translateX(0)!important}
+.app .mobileMenuHead{
+  display:flex!important;align-items:center!important;justify-content:space-between!important;
+  padding-bottom:12px!important;margin-bottom:6px!important;border-bottom:1px solid var(--line)!important;
+}
+.app .mobileMenuHead button{
+  width:34px!important;height:34px!important;display:grid!important;place-items:center!important;
+  border:1px solid var(--line)!important;border-radius:9px!important;background:var(--soft)!important;color:var(--text)!important;
+}
+.app .mobileMenu>button{
+  height:46px!important;padding:0 14px!important;border:0!important;border-radius:11px!important;
+  background:transparent!important;color:var(--text)!important;font-size:15px!important;font-weight:700!important;
+  text-align:left!important;
+}
+.app .mobileMenu>button:hover,.app .mobileMenu>button.navActive{background:var(--soft)!important;color:var(--accent)!important}
+.app .mobileMenu>button.navActive::after{display:none!important}
+
 /* ---------- Operations overview hero: Live now / Attention needed / Today ---------- */
 .app .opsHero{
   display:grid!important;
