@@ -1,204 +1,66 @@
-import React, { useEffect, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "./firebase";
-import { Role, Space, Booking, today } from "./pages/types";
-import Home from "./pages/Home";
-import BookingPage from "./pages/Booking";
-import { Account, AdminPage } from "./pages/Other";
+import {useEffect,useMemo,useState} from "react";
+import {CalendarCheck,ChevronDown,Home as HomeIcon,LogIn,LogOut,Menu,Settings2,ShieldCheck,Tag,X} from "lucide-react";
+import {GoogleAuthProvider,onAuthStateChanged,signInWithPopup,signOut} from "firebase/auth";
+import {doc,updateDoc} from "firebase/firestore";
+import {auth,db,isFirebaseConfigured} from "./firebase";
+import {DEFAULT_PRICING,Role,Space,Booking,today,addHours,withinBusinessHours,BUSINESS_START,BUSINESS_END} from "./pages/types";
+import {ensureUser,backfillUserBookings,loadPricing,savePricing,assignManager,removeManager,addAdmin,removeAdmin,acceptManager,createOffer,confirmBooking,revokeBooking,cancelBooking,createBooking,watchUser,watchAllBookings,watchPendingBookings,watchBookingLocks,watchOffers,watchRoleAssignment,watchUsers,watchAdmins,watchAdminLogs,saveUserProfile,loadUserProfile,loadDeskPricing,saveDeskPricing,loadWifi,saveWifi,loadUpi,saveUpi,getUserByEmail,markCheckIn,markCheckOut,watchBanners,watchHolidays,loadCompanySettings,saveCompanySettings,watchEnquiries,createEnquiry,updateEnquiry,watchPricingRules,savePricingRule,deletePricingRule,setHoliday,removeHoliday,createBanner,updateBanner,deleteBanner} from "./lib/firestore";
+import {nowInRange} from "./pages/types";
+import Home from "./pages/Home";import BookingPage from "./pages/Booking";import Amenities from "./pages/Amenities";import {Account,OffersPage,ManagerPage,AdminPage,LoginPage} from "./pages/Other";import OperationsSuite from "./pages/OperationsSuite";
 import coworxLogoFull from "./assets/coworx-logo-full.png";
-import {
-  ensureUser,
-  backfillUserBookings,
-  loadPricing as loadPricingLib,
-  loadCompanySettings,
-  loadWifi,
-  loadUpi,
-  watchBanners,
-  watchHolidays,
-  watchUser,
-  watchOffers,
-  watchRoleAssignment,
-  watchBookingLocks,
-  loadDeskPricing,
-} from "./lib/firestore";
-import "./styles.css";
-import "./mobile.css";
-import "./branding.css";
-
-const Logo = () => <img className="brandLogoImg" src={coworxLogoFull} alt="coworx central" />;
-
-export default function App() {
-  const [user, setUser] = useState<any>(null);
-  const [role, setRole] = useState<Role>("User");
-  const [page, setPage] = useState<string>("home");
-  const [isMobile, setIsMobile] = useState(
-    () => typeof window !== "undefined" && window.matchMedia?.("(max-width:900px)")?.matches || false
-  );
-
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [locks, setLocks] = useState<any[]>([]);
-  const [offers, setOffers] = useState<any[]>([]);
-  const [prices, setPrices] = useState<any>({});
-  const [deskPrices, setDeskPrices] = useState<any>({});
-  const [company, setCompany] = useState<any>({
-    name: "Coworx Central",
-    address: "Solapur City, Maharashtra",
-    gstNumber: "",
-    gstRate: 18,
-    phone: "",
-    email: "",
-  });
-
-  // load company and provide a safe global fallback for legacy callers
-  useEffect(() => {
-    const unBanners = (watchBanners?.( () => {}, () => {} ) as any) || (() => {});
-    const unHolidays = (watchHolidays?.( () => {}, () => {} ) as any) || (() => {});
-    loadCompanySettings()
-      .then(c => { setCompany(c); (window as any)._coworx_company = c; })
-      .catch(() => {});
-    return () => { try { unBanners(); unHolidays(); } catch (_) {} };
-  }, []);
-
-  useEffect(() => { (window as any)._coworx_company = company; }, [company]);
-
-  // load pricing / upi / wifi
-  useEffect(() => {
-    loadPricingLib().then(setPrices).catch(() => {});
-    loadWifi().catch(() => {});
-    loadUpi().catch(() => {});
-  }, []);
-
-  // auth listener
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async u => {
-      setUser(u);
-      if (!u) { setRole("User"); return; }
-      try {
-        const r = await ensureUser(u);
-        setRole(r);
-        await backfillUserBookings(u.uid);
-      } catch (e) { /* ignore for now */ }
-    });
-    return () => unsub();
-  }, []);
-
-  // watch user-scoped data when signed in
-  useEffect(() => {
-    if (!user) { setBookings([]); setOffers([]); setLocks([]); return; }
-    const uUnsub = (watchUser?.(user.uid, user.email || "", setBookings, () => {}) as any) || (() => {});
-    const offersUnsub = (watchOffers?.(user.email || "", setOffers) as any) || (() => {});
-    const roleUnsub = (watchRoleAssignment?.(user.email || "", () => {}) as any) || (() => {});
-    const locksUnsub = (watchBookingLocks?.(today(), setLocks, () => {}) as any) || (() => {});
-    (loadDeskPricing as any)?.(today(), {}).then(setDeskPrices).catch(() => {});
-    return () => { try { uUnsub(); offersUnsub(); roleUnsub(); locksUnsub(); } catch (_) {} };
-  }, [user]);
-
-  const nav = (p: string) => { setPage(p); window.scrollTo(0, 0); };
-  const resetBook = () => { setPage("book"); };
-
-  return (
-    <div className="app">
-      <header>
-        <button className="brand" onClick={() => nav("home")}><Logo /></button>
-        <nav className="desktopNav">
-          <button className={page === "book" ? "navActive" : ""} onClick={resetBook}>Book</button>
-          <button className={page === "home" ? "navActive" : ""} onClick={() => nav("home")}>Home</button>
-          <button className={page === "ops" ? "navActive" : ""} onClick={() => nav("ops")}>Operations</button>
-          <button className={page === "about" ? "navActive" : ""} onClick={() => nav("about")}>About</button>
-        </nav>
-      </header>
-
-      {page === "home" && (
-        <Home
-          book={(s: Space) => { setPage("book"); }}
-          prices={prices}
-          user={user}
-          bookings={bookings}
-          activeLocks={locks}
-          offers={offers}
-          nav={nav}
-          company={company}
-        />
-      )}
-
-      <main>
-        {page === "book" && (
-          <BookingPage
-            prices={prices}
-            deskPrices={deskPrices}
-            date={today()}
-            setDate={() => {}}
-            space={"desk" as Space}
-            setSpace={() => {}}
-            conf={"09:00"}
-            setConf={() => {}}
-            confDuration={1}
-            setConfDuration={() => {}}
-            meeting={"09:00"}
-            setMeeting={() => {}}
-            meetingDuration={1}
-            setMeetingDuration={() => {}}
-            pod={"09:00"}
-            setPod={() => {}}
-            podDuration={1}
-            setPodDuration={() => {}}
-            user={user}
-            role={role}
-            bookings={bookings}
-            setBookings={setBookings}
-            locks={locks}
-            setLocks={setLocks}
-            offers={offers}
-            setOffers={setOffers}
-            prices={prices}
-            deskPrices={deskPrices}
-            setDeskPrices={setDeskPrices}
-            setSelectedSeats={() => {}}
-            selectedSeats={[]}
-            setCustomerEmail={() => {}}
-            customerEmail={""}
-            phoneNumber={""}
-            setPhoneNumber={() => {}}
-            setStaffBooking={() => {}}
-            staffBooking={false}
-            users={[]}
-            company={company}
-          />
-        )}
-
-        {page === "account" && (
-          <Account bookings={bookings} staff={false} onCancel={() => {}} onCheckIn={() => {}} onCheckOut={() => {}} wifi={{}} company={company} />
-        )}
-
-        {page === "admin" && (
-          <AdminPage
-            prices={prices}
-            setPrices={setPrices}
-            save={() => {}}
-            date={today()}
-            setDate={() => {}}
-            deskPrices={deskPrices}
-            setDeskPrices={setDeskPrices}
-            saveDeskPrices={() => {}}
-            copyPrice={() => {}}
-            wifi={{}}
-            setWifi={() => {}}
-            saveWifi={() => {}}
-            upi={{}}
-            setUpi={() => {}}
-            saveUpi={() => {}}
-            managerEmail={""}
-            setManagerEmail={() => {}}
-            assignManager={() => {}}
-            admins={[]}
-            setAdmins={() => {}}
-            adminLogs={[]}
-            setAdminLogs={() => {}}
-            company={company}
-            saveCompany={(c: any) => {}}
-          />
-        )}
-      </main>
-    </div>
-  );
+import "./styles.css";import "./mobile.css";import "./branding.css";
+const active=(l:any)=>l.status==="Confirmed"||(l.status==="Pending"&&(l.expiresAt?.toMillis?.()||0)>Date.now());
+const maxHours=(locks:any[],space:Space,start:string)=>{let n=0;for(let i=0;i<10;i++){const slot=addHours(start,i);if(slot>=BUSINESS_END||locks.some(l=>l.inventoryId===space&&active(l)&&l.start===slot))break;n++;}return n;};
+const Logo=()=> <img className="brandLogoImg" src={coworxLogoFull} alt="coworx central" />;
+export default function App(){
+ const [user,setUser]=useState<any>(null),[role,setRole]=useState<Role>("User"),[page,setPage]=useState("home"),[menuOpen,setMenuOpen]=useState(false),[isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<=900),[theme,setTheme]=useState<"dark"|"light">((localStorage.getItem("coworx-theme") as any)||"dark");
+ const [profileOpen,setProfileOpen]=useState(false),[profileForm,setProfileForm]=useState<any>({mobile:"",gender:"",dob:"",profession:""}),[profileSaving,setProfileSaving]=useState(false);
+ useEffect(()=>{if(!user){setProfileForm({mobile:"",gender:"",dob:"",profession:""});return}let cancelled=false;loadUserProfile(user.uid).then(d=>{if(cancelled||!d)return;setProfileForm(x=>({mobile:x.mobile||d.phone||d.mobile||"",gender:x.gender||d.gender||"",dob:x.dob||d.dob||"",profession:x.profession||d.profession||""}))}).catch(()=>{});return()=>{cancelled=true}},[user]);
+ const onProfileSaved=(data:any)=>setProfileForm((x:any)=>({...x,...data}));
+ const [profileMenuOpen,setProfileMenuOpen]=useState(false);
+ useEffect(()=>{if(!user){setProfileForm({mobile:"",gender:"",dob:"",profession:""});return}getUserByEmail(user.email||"").then(u=>setProfileForm({mobile:u?.phone||localStorage.getItem("coworx-phone")||"",gender:u?.gender||"",dob:u?.dob||"",profession:u?.profession||""})).catch(()=>{})},[user?.uid]);
+ const [date,setDate]=useState(today()),[space,setSpace]=useState<Space>("desk"),[selectedSeats,setSelectedSeats]=useState<string[]>([]),[conf,setConf]=useState("09:00"),[meeting,setMeeting]=useState("09:00"),[pod,setPod]=useState("09:00"),[meetingDuration,setMeetingDuration]=useState(1),[confDuration,setConfDuration]=useState(1),[podDuration,setPodDuration]=useState(1),[prices,setPrices]=useState<any>(DEFAULT_PRICING),[deskPrices,setDeskPrices]=useState<any>({});
+ const [bookings,setBookings]=useState<Booking[]>([]),[staffBookings,setStaffBookings]=useState<Booking[]>([]),[pendingBookings,setPendingBookings]=useState<Booking[]>([]),[locks,setLocks]=useState<any[]>([]),[offers,setOffers]=useState<any[]>([]),[assignment,setAssignment]=useState<any>(null),[users,setUsers]=useState<any[]>([]),[admins,setAdmins]=useState<string[]>([]),[adminLogs,setAdminLogs]=useState<any[]>([]),[flash,setFlash]=useState(""),[loginError,setLoginError]=useState("");
+ const [managerEmail,setManagerEmail]=useState(""),[customerEmail,setCustomerEmail]=useState(""),[phoneNumber,setPhoneNumber]=useState(()=>localStorage.getItem("coworx-phone")||""),[staffBooking,setStaffBooking]=useState(false);
+ const [wifi,setWifi]=useState<any>({ssid:"",password:"",note:""}),[upi,setUpi]=useState<any>({upiId:"",merchantName:"Coworx Central"});
+ const [offerForm,setOfferForm]=useState({title:"",description:"",type:"percent" as any,value:10,targetType:"all" as any,targetEmail:""});
+ const [banners,setBanners]=useState<any[]>([]),[holidays,setHolidays]=useState<any[]>([]),[company,setCompany]=useState<any>({name:"Coworx Central",address:"Solapur City, Maharashtra",gstNumber:"",gstRate:18});
+ useEffect(()=>{const a=watchBanners(setBanners,()=>{}),b=watchHolidays(setHolidays,()=>{});loadCompanySettings().then(setCompany).catch(()=>{});return()=>{a();b();}},[]);
+ const activeBanners=useMemo(()=>banners.filter((b:any)=>b.active!==false&&nowInRange(b.startDate,b.endDate,b.startTime,b.endTime)),[banners]);
+ useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem("coworx-theme",theme)},[theme]);
+ useEffect(()=>{const mq=window.matchMedia("(max-width:900px)"),sync=()=>setIsMobile(mq.matches);sync();mq.addEventListener?.("change",sync);return()=>mq.removeEventListener?.("change",sync)},[]);
+ useEffect(()=>onAuthStateChanged(auth,async u=>{setUser(u);if(!u){setRole("User");return}try{const r=await ensureUser(u);setRole(r);await backfillUserBookings(u.uid)}catch(e:any){setFlash(e?.message||"Could not load account")}}),[]);
+ useEffect(()=>{loadPricing().then(setPrices).catch(()=>{});loadWifi().then(setWifi).catch(()=>{});loadUpi().then(setUpi).catch(()=>{})},[]);
+ useEffect(()=>{if(!user){setBookings([]);setOffers([]);setAssignment(null);setLocks([]);return}const a=watchUser(user.uid,user.email||"",setBookings,e=>setFlash(e?.message||"Could not load bookings")),b=watchOffers(user.email||"",setOffers),c=watchRoleAssignment(user.email||"",setAssignment),d=watchBookingLocks(date,setLocks,e=>setFlash(e?.message||"Could not load availability"));loadDeskPricing(date,{}).then(setDeskPrices).catch(()=>{});return()=>{a();b();c();d()}},[user,date]);
+ useEffect(()=>{if(!user||role==="User"){setPendingBookings([]);setStaffBookings([]);setUsers([]);setAdmins([]);setAdminLogs([]);return}const a=watchPendingBookings(setPendingBookings,e=>setFlash(e?.message||"Could not load pending requests")),b=watchAllBookings(setStaffBookings,e=>setFlash(e?.message||"Could not load bookings")),c=watchUsers(setUsers,e=>setFlash(e?.message||"Could not load users")),d=role==="Admin"?watchAdmins(setAdmins,e=>setFlash(e?.message||"Could not load admin roster")):()=>{},l=role==="Admin"?watchAdminLogs(setAdminLogs,e=>setFlash(e?.message||"Could not load admin log")):()=>{};return()=>{a();b();c();d();l()}},[user,role]);
+ const activeLocks=useMemo(()=>locks.filter(l=>l.date===date&&active(l)),[locks,date]);
+ const booked=useMemo(()=>activeLocks.map(l=>l.inventoryId),[activeLocks]);
+ const deskData=useMemo(()=>selectedSeats.map(id=>{const premium=[2,3,9,15,22].includes(Number(id.replace("D","")));return{price:Number(deskPrices[id]??(premium?prices.desk_premium:prices.desk_basic))}}),[selectedSeats,deskPrices,prices]);
+ const isDesk=space==="desk"||space==="cubicle",start=isDesk?undefined:space==="conference"?conf:space==="meeting"?meeting:pod;
+ const maximum=!isDesk&&start?maxHours(activeLocks,space,start):0,duration=isDesk?1:space==="conference"?confDuration:space==="meeting"?meetingDuration:podDuration,end=start?addHours(start,duration):undefined;
+ const base=isDesk?deskData.reduce((n,s)=>n+s.price,0):space==="conference"?prices.conference_hourly*duration:space==="meeting"?prices.meeting_hourly*duration:prices.podcast_hourly*duration;
+ const off=offers[0],offerDiscount=off?(off.type==="percent"?Math.round(base*off.value/100):Math.min(base,Number(off.value)||0)):0,bulkDiscount=isDesk&&selectedSeats.length>5?Math.round(base*.1):0,discount=Math.min(base,offerDiscount+bulkDiscount),total=Math.max(0,base-discount);
+ useEffect(()=>{if(isDesk||!start||maximum<1)return;if(space==="conference"&&confDuration>maximum)setConfDuration(maximum);if(space==="meeting"&&meetingDuration>maximum)setMeetingDuration(maximum);if(space==="podcast"&&podDuration>maximum)setPodDuration(maximum)},[space,start,maximum,confDuration,meetingDuration,podDuration,isDesk]);
+ const nav=(p:string)=>{if(p==="book"&&!user){setPage("login");setFlash("Google sign-in is required before booking.");return}setPage(p);setMenuOpen(false)};
+ const openProfile=async()=>{if(!user)return;try{const u=await getUserByEmail(user.email||"");setProfileForm({mobile:u?.phone||localStorage.getItem("coworx-phone")||"",gender:u?.gender||"",dob:u?.dob||"",profession:u?.profession||""})}catch{setProfileForm({mobile:localStorage.getItem("coworx-phone")||"",gender:"",dob:"",profession:""})}setProfileOpen(true)};
+ const saveProfile=async()=>{if(!user)return;const mobile=String(profileForm.mobile||"").trim();if(mobile.replace(/\D/g,"").length<10){setFlash("Enter a valid mobile number.");return}if(!String(profileForm.profession||"").trim()){setFlash("Select your profession.");return}setProfileSaving(true);try{await saveUserProfile(user.uid,{phone:mobile,gender:String(profileForm.gender||""),dob:String(profileForm.dob||""),profession:String(profileForm.profession||"")});localStorage.setItem("coworx-phone",mobile);setProfileOpen(false);setFlash("Profile details updated.")}catch(e:any){setFlash(e?.message||"Could not update profile")}finally{setProfileSaving(false)}};
+ async function login(){if(!isFirebaseConfigured){setLoginError("Edit src/firebaseConfig.ts with your Firebase Web App values.");return}try{await signInWithPopup(auth,new GoogleAuthProvider());setPage("home");setLoginError("")}catch(e:any){setLoginError(e?.message||"Google login failed")}}
+ async function book(profile?:any){if(!user){nav("book");return}if(staffBooking&&role==="User")return setFlash("Only Admin or Manager can book for a walk-in customer.");const targetEmail=staffBooking?customerEmail.trim().toLowerCase():user.email,phone=(profile?.mobile||phoneNumber).trim();if(!targetEmail||!targetEmail.includes("@"))return setFlash("Enter the customer's email address.");if(phone.replace(/\D/g,"").length<10)return setFlash("Enter a valid mobile number.");localStorage.setItem("coworx-phone",phone);if(profile&&!staffBooking){try{await saveUserProfile(user.uid,{phone,gender:profile.gender,dob:profile.dob,profession:profile.profession})}catch{}}
+ if(isDesk&&!selectedSeats.length)return setFlash("Select at least one desk first.");if(start&&end&&!withinBusinessHours(start,end))return setFlash(`Bookings are only allowed from ${BUSINESS_START} to ${BUSINESS_END}.`);if(!isDesk&&(!maximum||duration>maximum))return setFlash("That duration is unavailable. Choose another start time or shorter duration.");
+ try{const ids=isDesk?selectedSeats.map(s=>`desk-${s}`):[space],lockKeys=isDesk?selectedSeats.map(s=>`${date}_desk-${s}_day`):Array.from({length:duration},(_,i)=>`${date}_${space}_${addHours(start||BUSINESS_START,i)}`);let customerName=user.displayName||user.email?.split("@")[0]||"Coworx Member";if(staffBooking){const existing=await getUserByEmail(targetEmail);if(existing?.name)customerName=existing.name}await createBooking({date,space,inventoryId:ids[0],inventoryIds:ids,lockKeys,label:isDesk?`${selectedSeats.length} Desk${selectedSeats.length===1?"":"s"}`:space==="meeting"?"Meeting Room":space==="conference"?"Conference Room":"Creator Studio",userId:staffBooking?`walkin:${targetEmail}`:user.uid,userEmail:user.email||"",customerName,customerEmail:targetEmail,customerPhone:phone,createdByRole:staffBooking?role:"User",walkIn:staffBooking,start,end,durationHours:duration,base,discount,total,offerId:off?.id||null,status:staffBooking?"Confirmed":"Pending"});if(!staffBooking)window.open(`https://wa.me/919970836509?text=${encodeURIComponent(`Hello Coworx Central, I want to book ${isDesk?`${selectedSeats.length} desk(s): ${selectedSeats.join(", ")}`:space==="meeting"?`Meeting Room ${start}-${end}`:space==="conference"?`Conference Room ${start}-${end}`:`Creator Studio ${start}-${end}`} on ${date}. Total: ₹${total}. Contact: ${phone}.`)}`,"_blank");setFlash(staffBooking?`Booking confirmed for ${targetEmail}.`:`Request created for ${targetEmail}. Slot held for 15 minutes.`);setPage("bookings");setSelectedSeats([]);setStaffBooking(false);setCustomerEmail("")}catch(e:any){setFlash(e?.message||"Booking failed")}}
+ async function doAssign(){try{await assignManager(managerEmail,user.uid,user.email||"");setManagerEmail("");setFlash("Manager invitation sent.")}catch(e:any){setFlash(e?.message||"Unable to assign manager")}}
+ async function doRemoveManager(email:string){try{await removeManager(email,user.uid,user.email||"");setFlash(`Manager access removed for ${email}.`)}catch(e:any){setFlash(e?.message||"Unable to remove manager")}}
+ async function doAddAdmin(email:string){try{await addAdmin(email,user.uid,user.email||"");setFlash(`Admin access granted to ${email.trim().toLowerCase()}.`)}catch(e:any){setFlash(e?.message||"Unable to add admin")}}
+ async function doRemoveAdmin(email:string){try{await removeAdmin(email,user.uid,user.email||"");setFlash(`Admin access removed for ${email}.`)}catch(e:any){setFlash(e?.message||"Unable to remove admin")}}
+ async function doOffer(){try{await createOffer(offerForm,user.uid);setOfferForm({title:"",description:"",type:"percent",value:10,targetType:"all",targetEmail:""});setFlash("Offer created.")}catch(e:any){setFlash(e?.message||"Offer creation failed")}}
+ async function doConfirm(id:string,staffDiscount=0,paymentReceived?:number,paymentMethod?:string,paymentRef?:string){try{await confirmBooking(id,user.uid,staffDiscount,paymentReceived,paymentMethod,paymentRef);setFlash("Booking confirmed and payment recorded.")}catch(e:any){setFlash(e?.message||"Could not confirm booking")}}
+ async function doRevoke(id:string){try{await revokeBooking(id,user.uid);setFlash("Booking request revoked and slot released.")}catch(e:any){setFlash(e?.message||"Could not revoke request")}}
+ async function doCancel(id:string){try{await cancelBooking(id,user.uid);setFlash("Booking cancelled and availability released.")}catch(e:any){setFlash(e?.message||"Could not cancel booking")}}
+ async function accept(){try{await acceptManager(assignment,user.uid);setRole("Manager");setAssignment({...assignment,status:"accepted"});setFlash("Manager role activated.")}catch(e:any){setFlash(e?.message||"Could not activate role")}}
+ const resetBook=()=>{setSpace("desk");setSelectedSeats([]);setStaffBooking(false);nav("book")};
+ const mobile=isMobile?<><div className={`mobileMenuScrim ${menuOpen?"open":""}`} onClick={()=>setMenuOpen(false)}/><div className={`mobileMenu ${menuOpen?"open":""}`}><div className="mobileMenuHead"><Logo/><button onClick={()=>setMenuOpen(false)} aria-label="Close menu"><X size={19}/></button></div><button className={page==="book"?"navActive":""} onClick={resetBook}>Book</button>{user&&<button className={page==="bookings"?"navActive":""} onClick={()=>nav("bookings")}>My Bookings</button>}{user&&<button className={page==="offers"?"navActive":""} onClick={()=>nav("offers")}>Offers</button>}<button className={page==="amenities"?"navActive":""} onClick={()=>nav("amenities")}>Amenities</button>{role!=="User"&&user&&<button className={page==="manager"?"navActive":""} onClick={()=>nav("manager")}>Manage Booking{pendingBookings.length?` · ${pendingBookings.length}`:""}</button>}{role==="Admin"&&user&&<><button className={page==="operations"?"navActive":""} onClick={()=>nav("operations")}>Operations</button><button className={page==="admin"?"navActive":""} onClick={()=>nav("admin")}>Admin</button></>}{user&&<div className="mobileMenuFoot"><div className="mobileMenuAccount"><b>{user.displayName||"Coworx Member"}</b><small>{user.email}</small></div><button className="mobileSignOut" onClick={()=>{setMenuOpen(false);signOut(auth)}}><LogOut size={16}/> Sign out</button></div>}</div></>:null;
+ return <div className="app"><header><button className="brand" onClick={()=>nav("home")}><Logo/></button><nav className="desktopNav"><button className={page==="book"?"navActive":""} onClick={resetBook}>Book</button>{user&&<><button className={page==="bookings"?"navActive":""} onClick={()=>nav("bookings")}>My Bookings</button><button className={page==="offers"?"navActive":""} onClick={()=>nav("offers")}>Offers</button></>}<button className={page==="amenities"?"navActive":""} onClick={()=>nav("amenities")}>Amenities</button>{role!=="User"&&user&&<button className={`staffNav ${page==="manager"?"navActive":""}`} onClick={()=>nav("manager")}>Manage Booking{pendingBookings.length?` · ${pendingBookings.length}`:""}</button>}{role==="Admin"&&user&&<><button className={`staffNav ${page==="operations"?"navActive":""}`} onClick={()=>nav("operations")}>Operations</button><button className={`staffNav ${page==="admin"?"navActive":""}`} onClick={()=>nav("admin")}>Admin</button></>}</nav><div className="headActions">{user?<><div className="profileMenuWrap">{profileMenuOpen&&<div className="menuScrim" onClick={()=>setProfileMenuOpen(false)}/>}<button className="emailChip profileChip" onClick={()=>setProfileMenuOpen(v=>!v)} title="Account menu"><span>{user.displayName?.split(" ")[0]||user.email}</span><ChevronDown size={14}/></button>{profileMenuOpen&&<div className="profileMenu"><div className="profileMenuHead"><b>{user.displayName||"Coworx Member"}</b><small>{user.email}</small></div><button onClick={()=>{setProfileMenuOpen(false);openProfile()}}><Settings2 size={15}/> My profile</button><button onClick={()=>{setProfileMenuOpen(false);nav("bookings")}}><CalendarCheck size={15}/> My bookings</button><button onClick={()=>{setProfileMenuOpen(false);nav("offers")}}><Tag size={15}/> Offers</button><button className="danger" onClick={()=>{setProfileMenuOpen(false);signOut(auth)}}><LogOut size={15}/> Sign out</button></div>}</div></>:<button className="loginChip" onClick={login}><LogIn size={16}/> Google</button>}<button className="theme" onClick={()=>setTheme(theme==="dark"?"light":"dark")}>{theme==="dark"?"☀":"☾"}</button>{isMobile&&<button className="menuBtn" aria-label="Open menu" onClick={()=>setMenuOpen(!menuOpen)}><Menu size={21}/></button>}</div></header>{mobile}{isMobile&&<nav className="bottomNav"><button className={page==="home"?"navActive":""} onClick={()=>nav("home")}><HomeIcon size={19}/><span>Home</span></button><button className={page==="book"?"navActive":""} onClick={resetBook}><CalendarCheck size={19}/><span>Book</span></button>{user?<button className={page==="bookings"?"navActive":""} onClick={()=>nav("bookings")}><CalendarCheck size={19}/><span>Bookings</span></button>:<button onClick={login}><LogIn size={19}/><span>Sign in</span></button>}<button className={page==="offers"?"navActive":""} onClick={()=>nav("offers")}><Tag size={19}/><span>Offers</span></button><button onClick={()=>setMenuOpen(true)}><Menu size={19}/><span>More</span></button></nav>}{assignment?.status==="pending"&&<div className="roleBanner"><div><ShieldCheck/><span><b>Manager invitation</b><small>Admin has invited {user.email}.</small></span></div><div><button className="primary small" onClick={accept}>Accept</button><button className="ghost small" onClick={()=>updateDoc(doc(db,"roleAssignments",assignment.id),{status:"declined"})}>Decline</button></div></div>}{!isFirebaseConfigured&&<div className="configBanner">Edit <code>src/firebaseConfig.ts</code> with your Firebase Web App values.</div>}{flash&&<div className="toast">{flash}<button onClick={()=>setFlash("")}><X size={15}/></button></div>}
+ {page==="home"&&<Home book={s=>{setSpace(s);setSelectedSeats([]);setStaffBooking(false);nav("book")}} prices={prices} user={user} bookings={bookings} activeLocks={activeLocks} offers={offers} nav={nav} banners={activeBanners}/>} {page==="login"&&<LoginPage onLogin={login} error={loginError}/>} {page==="book"&&user&&<BookingPage date={date} setDate={setDate} space={space} setSpace={setSpace} selectedSeats={selectedSeats} setSelectedSeats={setSelectedSeats} booked={booked} roomLocks={activeLocks} prices={prices} deskPrices={deskPrices} conf={conf} setConf={setConf} confDuration={confDuration} setConfDuration={setConfDuration} meeting={meeting} setMeeting={setMeeting} meetingDuration={meetingDuration} setMeetingDuration={setMeetingDuration} pod={pod} setPod={setPod} podDuration={podDuration} setPodDuration={setPodDuration} base={base} total={total} discount={discount} bulkDiscount={bulkDiscount} offerDiscount={offerDiscount} offers={offers} book={book} staff={role!=="User"} staffBooking={staffBooking} setStaffBooking={setStaffBooking} customerEmail={customerEmail} setCustomerEmail={setCustomerEmail} phoneNumber={phoneNumber} setPhoneNumber={setPhoneNumber} user={user} myProfile={profileForm} onProfileSaved={onProfileSaved} users={users}/>} {page==="bookings"&&user&&<Account bookings={role==="User"?bookings:staffBookings} staff={role!=="User"} wifi={wifi} onCancel={doCancel} onCheckIn={markCheckIn} onCheckOut={markCheckOut} company={company}/>} {page==="offers"&&user&&<OffersPage offers={offers}/>} {page==="amenities"&&<Amenities/>} {page==="manager"&&user&&role!=="User"&&<ManagerPage bookings={pendingBookings} form={offerForm} setForm={setOfferForm} createOffer={doOffer} confirm={doConfirm} revoke={doRevoke}/>} {page==="operations"&&user&&role==="Admin"&&<main className="page opsPage"><OperationsSuite users={users} bookings={staffBookings} admins={admins} adminLogs={adminLogs} actorUid={user.uid} actorEmail={user.email||""} onFlash={setFlash}/></main>} {page==="admin"&&user&&role==="Admin"&&<AdminPage users={users} admins={admins} adminLogs={adminLogs} bookings={pendingBookings} allBookings={staffBookings} prices={prices} setPrices={setPrices} date={date} setDate={setDate} deskPrices={deskPrices} setDeskPrices={setDeskPrices} save={async()=>{try{await savePricing(prices);setFlash("Pricing saved.")}catch(e:any){setFlash(e?.message||"Pricing save failed")}}} saveDeskPrices={async()=>{try{await saveDeskPricing(date,deskPrices);setFlash("Desk pricing saved for selected date.")}catch(e:any){setFlash(e?.message||"Desk pricing save failed")}}} copyPrice={(v:number)=>setDeskPrices(Object.fromEntries(Array.from({length:22},(_,i)=>[`D${String(i+1).padStart(2,"0")}`,v])))} wifi={wifi} setWifi={setWifi} saveWifi={async()=>{try{await saveWifi(wifi);setFlash("Wi-Fi credentials saved.")}catch(e:any){setFlash(e?.message||"Wi-Fi save failed")}}} upi={upi} setUpi={setUpi} saveUpi={async()=>{try{await saveUpi(upi);setFlash("UPI details saved.")}catch(e:any){setFlash(e?.message||"UPI save failed")}}} managerEmail={managerEmail} setManagerEmail={setManagerEmail} assignManager={doAssign} onRemoveManager={doRemoveManager} onAddAdmin={doAddAdmin} onRemoveAdmin={doRemoveAdmin} offerForm={offerForm} setOfferForm={setOfferForm} createOffer={doOffer} onCancel={doCancel}/>}{profileOpen&&user&&<ProfileSettings profileForm={profileForm} setProfileForm={setProfileForm} onClose={()=>setProfileOpen(false)} onSave={saveProfile} saving={profileSaving} name={user.displayName||"Coworx Member"} email={user.email||""}/>}<footer><b>coworx central</b><span>Solapur City</span><a href="https://maps.google.com/?q=17.6599,75.9064" target="_blank" rel="noreferrer">Google Maps</a></footer></div>;
 }
+
+function ProfileSettings({profileForm,setProfileForm,onClose,onSave,saving,name,email}:any){return <div className="modalBackdrop profileSettingsBackdrop"><div className="profileSettingsCard"><div className="profileSettingsHead"><div><span className="eyebrow">ACCOUNT SETTINGS</span><h3>Your details</h3><p>Update the contact and professional details used for Coworx Central bookings.</p></div><button className="ghost small" onClick={onClose}>Close</button></div><div className="profileIdentity"><strong>{name}</strong><span>{email}</span></div><div className="profileSettingsGrid"><label>Mobile number *<input type="tel" inputMode="tel" value={profileForm.mobile||""} onChange={e=>setProfileForm({...profileForm,mobile:e.target.value})} placeholder="+91 98765 43210"/></label><label>Gender<select value={profileForm.gender||""} onChange={e=>setProfileForm({...profileForm,gender:e.target.value})}><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option><option>Prefer not to say</option></select></label><label>Date of birth<input type="date" value={profileForm.dob||""} onChange={e=>setProfileForm({...profileForm,dob:e.target.value})}/></label><label>Profession<select value={profileForm.profession||""} onChange={e=>setProfileForm({...profileForm,profession:e.target.value})}><option value="">Select profession</option><option>IT Professional</option><option>Developer</option><option>Tester</option><option>Marketing Team</option><option>Student</option><option>Designer</option><option>Consultant</option><option>Business</option><option>Other</option></select></label></div><div className="profileSettingsFooter"><small>Google name and email stay connected to your Google account.</small><button className="primary" onClick={onSave} disabled={saving}>{saving?"Saving…":"Save details"}</button></div></div></div>}
