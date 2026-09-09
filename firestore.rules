@@ -39,7 +39,8 @@ service cloud.firestore {
     match /roleAssignments/{id} {
       allow read: if isAdmin() || (signedIn() && id == userEmail());
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (signedIn() && id == userEmail() && request.resource.data.email == resource.data.email && request.resource.data.role == resource.data.role && request.resource.d[...] 
+      // allow update if admin OR the owner of this roleAssignment is editing but cannot change email/role fields
+      allow update: if isAdmin() || (signedIn() && id == userEmail() && request.resource.data.email == resource.data.email && request.resource.data.role == resource.data.role);
     }
 
     match /notifications/{id} {
@@ -95,7 +96,7 @@ service cloud.firestore {
     }
 
     match /bookings/{id} {
-      allow read: if isAdmin() || isManager() || (signedIn() && (resource.data.userId == request.auth.uid || (resource.data.customerEmail != null && resource.data.customerEmail.lower() == userEmai[...]
+      allow read: if isAdmin() || isManager() || (signedIn() && (resource.data.userId == request.auth.uid || (resource.data.customerEmail != null && resource.data.customerEmail.lower() == userEmail())));
       allow create: if isAdmin() || isManager() || (signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.status == "Pending");
       allow update: if isAdmin() || isManager() || (signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.status == "Cancelled");
       allow delete: if isAdmin();
