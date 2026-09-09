@@ -1,4 +1,5 @@
-import {Building2,ChevronRight,Check,Lock,MessageCircle,Mic2,Users,Monitor,Sparkles} from "lucide-react";
+import {useState} from "react";
+import {Building2,ChevronRight,Check,Lock,MessageCircle,Mic2,Users,Monitor,Sparkles,Gift,Info,CalendarX,X} from "lucide-react";
 import cubicles from "../assets/cubicles.webp";import conference from "../assets/conference-1.webp";import conference2 from "../assets/conference-2.webp";import lounge from "../assets/lounge.webp";import podcast from "../assets/podcast.webp";
 import {Space,spaceLabel,today} from "./types";import Pano360 from "./Pano360";import "./polish.css";
 
@@ -11,7 +12,10 @@ function NextBooking({b,nav}:{b:any;nav:(p:string)=>void}){
   </button>;
 }
 
-export default function Home({book,prices,user,bookings=[],activeLocks=[],offers=[],nav}:{book:(s:Space)=>void;prices:any;user?:any;bookings?:any[];activeLocks?:any[];offers?:any[];nav?:(p:string)=>void}){
+export default function Home({book,prices,user,bookings=[],activeLocks=[],offers=[],nav,banners=[]}:{book:(s:Space)=>void;prices:any;user?:any;bookings?:any[];activeLocks?:any[];offers?:any[];nav?:(p:string)=>void;banners?:any[]}){
+  const [dismissed,setDismissed]=useState<string[]>(()=>{try{return JSON.parse(sessionStorage.getItem("coworx-banners-dismissed")||"[]")}catch{return[]}});
+  const dismiss=(id:string)=>{const next=[...dismissed,id];setDismissed(next);try{sessionStorage.setItem("coworx-banners-dismissed",JSON.stringify(next))}catch{}};
+  const visibleBanners=banners.filter(b=>!dismissed.includes(b.id));
   const firstName=(user?.displayName||"").split(" ")[0];
   const t=today();
   const nextBooking=[...bookings].filter(b=>(b.status==="Confirmed"||b.status==="Pending")&&b.date>=t).sort((a,b)=>(a.date+(a.start||"")).localeCompare(b.date+(b.start||"")))[0];
@@ -23,6 +27,7 @@ export default function Home({book,prices,user,bookings=[],activeLocks=[],offers
   const quickPicks:[Space,string,any][]=[["desk","Desk",Monitor],["meeting","Meeting Room",Users],["conference","Conference Room",Building2],["podcast","Studio",Mic2]];
 
   return <main className="page">
+    {visibleBanners.length>0&&<section className="bannerStrip">{visibleBanners.map(b=><div className={`bannerCard bannerCard-${b.kind}`} key={b.id}><span className="bannerIcon">{b.kind==="offer"?<Gift size={16}/>:b.kind==="holiday"?<CalendarX size={16}/>:<Info size={16}/>}</span><div><b>{b.title}</b><span>{b.message}</span></div><button className="bannerDismiss" onClick={()=>dismiss(b.id)}><X size={14}/></button></div>)}</section>}
     {user&&<section className="homeGreeting">
       <div className="homeGreetingHead">
         <div><span className="eyebrow">{greetingWord()}{firstName?`, ${firstName}`:""} 👋</span><h2>What do you need today?</h2></div>

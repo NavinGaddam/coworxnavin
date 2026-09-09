@@ -119,6 +119,16 @@
 .app .custDropdown button b{font-size:13px!important}
 .app .custDropdown button span{font-size:11px!important;color:var(--muted)!important}
 .app .custNewHint{display:flex!important;align-items:center!important;gap:7px!important;padding:9px 10px!important;font-size:12px!important;color:var(--muted)!important}
+.app .custAddNewBtn{display:flex!important;align-items:center!important;gap:8px!important;width:100%!important;margin-top:4px!important;padding:10px!important;border:1px dashed rgba(228,181,28,.5)!important;border-radius:9px!important;background:rgba(228,181,28,.08)!important;color:#b18400!important;font-weight:800!important;font-size:12px!important;text-align:left!important}
+.app .custAddNewBtn:hover{background:rgba(228,181,28,.16)!important}
+.app .standaloneRangeSummary{display:flex!important;align-items:center!important;gap:8px!important;padding:10px 2px 16px!important;color:var(--accent)!important;border-bottom:1px solid var(--line)!important;margin-bottom:16px!important}
+.app .standaloneRangeSummary strong{font-size:13px!important;color:var(--text)!important}
+.app .standaloneRangeSummary small{color:var(--muted)!important;font-size:11px!important}
+.app .wednesdayNotice{display:flex!important;gap:10px!important;align-items:flex-start!important;padding:12px 14px!important;margin-bottom:16px!important;border-radius:13px!important;border:1px solid rgba(58,134,232,.3)!important;background:rgba(58,134,232,.08)!important;color:#5b9be0!important}
+.app .wednesdayNotice svg{flex:none!important;margin-top:2px!important}
+.app .wednesdayNotice b{display:block!important;font-size:12.5px!important;color:var(--text)!important;margin-bottom:3px!important}
+.app .wednesdayNotice span{font-size:11.5px!important;color:var(--muted)!important;line-height:1.5!important}
+.app .wednesdayNotice.holidayNotice{border-color:rgba(224,98,95,.35)!important;background:rgba(224,98,95,.08)!important;color:#e0625f!important}
 
 .app .dateRangeRow{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important}
 .app .dateRangeRow label{display:grid!important;gap:5px!important;font-size:11px!important;font-weight:700!important;color:var(--muted)!important}
@@ -209,6 +219,18 @@
 }
 
 /* ---------- Home screen: greeting, next booking, live status, offer teaser ---------- */
+.app .bannerStrip{display:grid!important;gap:10px!important;margin:14px 4% 0!important}
+.app .bannerCard{display:flex!important;align-items:flex-start!important;gap:11px!important;padding:13px 15px!important;border-radius:14px!important;border:1px solid var(--line)!important;background:var(--card)!important;box-shadow:0 8px 24px rgba(0,0,0,.08)!important}
+.app .bannerCard .bannerIcon{width:32px!important;height:32px!important;flex:none!important;border-radius:10px!important;display:grid!important;place-items:center!important;background:rgba(228,181,28,.14)!important;color:#b18400!important}
+.app .bannerCard div{display:grid!important;gap:2px!important;flex:1!important}
+.app .bannerCard b{font-size:13px!important;color:var(--text)!important}
+.app .bannerCard span{font-size:12px!important;color:var(--muted)!important;line-height:1.5!important}
+.app .bannerCard button.bannerDismiss{flex:none!important;background:transparent!important;border:0!important;color:var(--muted)!important;padding:4px!important}
+.app .bannerCard-offer .bannerIcon{background:rgba(228,181,28,.16)!important;color:#b18400!important}
+.app .bannerCard-reminder .bannerIcon{background:rgba(58,134,232,.14)!important;color:#3a86e8!important}
+.app .bannerCard-instruction .bannerIcon{background:rgba(120,120,120,.14)!important;color:var(--muted)!important}
+.app .bannerCard-holiday{border-color:rgba(224,98,95,.35)!important;background:rgba(224,98,95,.06)!important}
+.app .bannerCard-holiday .bannerIcon{background:rgba(224,98,95,.16)!important;color:#e0625f!important}
 .app .homeGreeting{
   border:1px solid var(--line)!important;
   border-radius:20px!important;
