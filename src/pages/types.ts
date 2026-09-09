@@ -6,7 +6,7 @@ export type BookingStatus = "Pending" | "Confirmed" | "Expired" | "Cancelled";
 export type PaymentStatus = "Pending" | "Partially Paid" | "Paid" | "Refund Pending" | "Refunded";
 export type RefundStatus = "Not Requested" | "Pending" | "Approved" | "Processed" | "Rejected";
 export type AppUser = {uid:string;name:string;email:string;photoURL?:string;role:Role;phone?:string;gender?:string;dob?:string;profession?:string;customerNotes?:string;vip?:boolean;blocked?:boolean;blockedReason?:string;preferredDesk?:string;company?:string;referralCode?:string;referralCount?:number;totalSpend?:number;bookingCount?:number;lastBookingAt?:any;membershipId?:string;membershipName?:string;membershipRemaining?:number};
-export type Offer = {id:string;title:string;description:string;type:OfferType;value:number;targetType:TargetType;targetEmail?:string;active:boolean;space?:Space|string;minDays?:number;maxDays?:number;autoApply?:boolean;couponCode?:string;expiresAt?:any};
+export type Offer = {id:string;title:string;description:string;type:OfferType;value:number;targetType:TargetType;targetEmail?:string;active:boolean;space?:Space|string;minDays?:number;couponCode?:string;expiresAt?:any};
 export type Booking = {id:string;userId:string;userEmail:string;customerName?:string;customerEmail?:string;customerPhone?:string;inventoryId:string;inventoryIds?:string[];lockIds?:string[];space:Space;label:string;date:string;endDate?:string;days?:number;dates?:string[];start?:string;end?:string;durationHours?:number;base:number;discount:number;staffDiscount?:number;total:number;offerId?:string|null;couponCode?:string;membershipId?:string;referralCode?:string;status:BookingStatus;walkIn?:boolean;createdByRole?:Role|string;paymentMethod?:"UPI"|"Cash"|"Other";paymentRef?:string;paymentReceived?:number;paymentStatus?:PaymentStatus;confirmedBy?:string;confirmedAt?:any;expiresAt?:any;createdAt?:any;checkedInAt?:any;checkedOutAt?:any;revokedBy?:string;revokedAt?:any;cancellationReason?:string;refundStatus?:RefundStatus;refundAmount?:number;refundReference?:string;invoiceNumber?:string;extensionOf?:string;extensionTotal?:number;addons?:Array<{id:string;name:string;qty:number;unitPrice:number;total:number}>;amenities?:string[];notes?:string};
 export const ADMIN_EMAIL="vsshegur@gmail.com";
 export const ADMIN_EMAILS=["vsshegur@gmail.com","navingaddam2@gmail.com"];
@@ -29,11 +29,19 @@ export const dateSpan=(start:string,end:string)=>{if(end<start)return[];const ou
 export const withinBusinessHours=(start:string,end:string)=>start>=BUSINESS_START&&end<=BUSINESS_END&&start<end;
 export const emailKey=(email:string)=>email.trim().toLowerCase().replaceAll(".","-").replaceAll("#","-").replaceAll("$","-").replaceAll("[","-").replaceAll("]","-").replaceAll("/","-");
 export const spaceLabel=(space:Space)=>space==="desk"||space==="cubicle"?"Desk":space==="meeting"?"Meeting Room":space==="conference"?"Conference Room":"Creator Studio";
-export type CompanySettings={name:string;address:string;gstNumber?:string;gstRate?:number;invoicePrefix?:string;phone?:string;email?:string};
-export type Holiday={id:string;date:string;reason:string;active:boolean};
-export type Banner={id:string;kind:"offer"|"instruction"|"reminder"|"holiday";title:string;message:string;startDate:string;endDate:string;startTime?:string;endTime?:string;active:boolean};
-export type Enquiry={id:string;name:string;email?:string;phone?:string;interest?:string;notes?:string;status:"New"|"Contacted"|"Converted"|"Closed";source:"Staff"|"Signup"};
-export type PricingRule={id:string;label:string;startDate:string;endDate:string;pricing:Record<string,number>;active:boolean};
-export const isWednesday=(d:string)=>{try{return new Date(`${d}T00:00:00`).getDay()===3}catch{return false}};
-export const isWithinRange=(d:string,start:string,end:string)=>d>=start&&d<=end;
-export const nowInRange=(startDate?:string,endDate?:string,startTime?:string,endTime?:string)=>{const d=new Date(),ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;if(startDate&&ds<startDate)return false;if(endDate&&ds>endDate)return false;if(startTime&&endTime){const t=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;if(t<startTime||t>endTime)return false}return true};
+export function formatDuration(ms:number){const m=Math.max(0,Math.floor(ms/60000)),d=Math.floor(m/1440),h=Math.floor((m%1440)/60),mm=m%60;if(d>0)return `${d}d ${h}h`;if(h>0)return `${h}h ${mm}m`;return `${mm}m`;}
+export function liveBookingState(b:any,nowMs:number):{tone:string;label:string;ms?:number}{
+ if(!b||b.status==="Cancelled")return {tone:"cancelled",label:"Cancelled"};
+ if(b.status==="Expired")return {tone:"expired",label:"Expired"};
+ if(b.status==="Pending"){const exp=b.expiresAt?.toMillis?.()||0;if(exp>nowMs)return {tone:"pending",label:"Payment hold",ms:exp-nowMs};return {tone:"expired",label:"Hold expired"};}
+ const isDesk=b.space==="desk"||b.space==="cubicle";
+ const startIso=isDesk?`${b.date}T${BUSINESS_START}:00`:`${b.date}T${(b.start||BUSINESS_START)}:00`;
+ const endDatePart=b.endDate||b.date;
+ const endIso=isDesk?`${endDatePart}T${BUSINESS_END}:00`:`${endDatePart}T${(b.end||BUSINESS_END)}:00`;
+ const startMs=new Date(startIso).getTime(),endMs=new Date(endIso).getTime();
+ if(b.checkedOutAt)return {tone:"done",label:"Checked out"};
+ if(!isNaN(startMs)&&nowMs<startMs)return {tone:"upcoming",label:"Starts in",ms:startMs-nowMs};
+ if(!isNaN(endMs)&&nowMs>=startMs&&nowMs<endMs)return b.checkedInAt?{tone:"active",label:"Checked in",ms:endMs-nowMs}:{tone:"active",label:"In progress",ms:endMs-nowMs};
+ if(b.checkedInAt&&!b.checkedOutAt)return {tone:"overdue",label:"Check-out overdue"};
+ return {tone:"done",label:"Completed"};
+}

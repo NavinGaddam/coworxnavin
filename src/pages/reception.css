@@ -1,0 +1,21 @@
+.receptionPanel{display:grid;gap:18px;margin-top:6px}
+.receptionSearchBar{display:flex;align-items:center;gap:10px;padding:13px 15px;border:1px solid var(--line);border-radius:14px;background:var(--soft)}
+.receptionSearchBar svg{color:var(--muted);flex:none}
+.receptionSearchBar input{flex:1;border:0;background:none;outline:none;color:var(--text);font-size:14px}
+.receptionStatGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.receptionStat{display:grid;gap:6px;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--card);box-shadow:var(--shadow)}
+.receptionStat span{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;background:rgba(228,181,28,.12);color:var(--accent)}
+.receptionStat strong{font-size:22px}
+.receptionStat small{color:var(--muted);font-size:10px;font-weight:800}
+.receptionSubTabs{margin-top:2px}
+.receptionResults{margin-top:2px}
+.receptionRow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--card);box-shadow:var(--shadow);margin-bottom:10px}
+.receptionTags{display:flex;align-items:center}
+.receptionActions{display:flex;flex-wrap:wrap;gap:8px}
+.receptionBtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:46px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:var(--soft);color:var(--text);font-weight:800;font-size:13px;text-decoration:none}
+.receptionBtn.primary{background:var(--accent);color:#211e14;border-color:var(--accent)}
+.receptionBtn.whatsappBtn{background:rgba(36,199,107,.10);border-color:rgba(36,199,107,.28);color:#39c977}
+.receptionBtn:disabled{opacity:.55;cursor:default}
+.receptionModeTabs{width:max-content}
+@media(max-width:900px){.receptionStatGrid{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.receptionRow{flex-direction:column;align-items:flex-start}.receptionActions{width:100%}.receptionBtn{flex:1}.receptionModeTabs{width:100%}.receptionModeTabs button{flex:1}}
