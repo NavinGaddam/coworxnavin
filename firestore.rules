@@ -39,7 +39,8 @@ service cloud.firestore {
     match /roleAssignments/{id} {
       allow read: if isAdmin() || (signedIn() && id == userEmail());
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (signedIn() && id == userEmail() && request.resource.data.email == resource.data.email && request.resource.data.role == resource.data.role && request.resource.data.status in ["accepted", "declined"]);
+      // allow update if admin OR the owner of this roleAssignment is editing but cannot change email/role fields
+      allow update: if isAdmin() || (signedIn() && id == userEmail() && request.resource.data.email == resource.data.email && request.resource.data.role == resource.data.role);
     }
 
     match /notifications/{id} {
@@ -49,9 +50,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Settings collection: most keys are admin-only for writes. Managers may be allowed to update certain operational settings (banners, operations, company) below.
     match /settings/{id} {
       allow read: if signedIn() && id in ["pricing","deskPricing","upi","policy","operations","notificationTemplates","permissions","shifts","admins"];
-      allow write: if isAdmin();
+      // allow write for admins; allow managers to write a small set of operational settings (operations, banners, company)
+      allow write: if isAdmin() || (isManager() && id in ["operations", "banners", "company"]);
     }
     match /settings/wifi {
       allow read: if isManager();
@@ -114,5 +117,18 @@ service cloud.firestore {
       allow create: if isAdmin() || isManager() || (signedIn() && request.resource.data.userId == request.auth.uid);
       allow update, delete: if isAdmin() || isManager() || (signedIn() && resource.data.userId == request.auth.uid);
     }
+
+    // Explicit matches for banners and notices collections to allow manager-level creation
+    match /banners/{bannerId} {
+      allow read: if signedIn();
+      allow create: if isAdmin() || isManager();
+      allow update, delete: if isAdmin();
+    }
+
+    match /notices/{noticeId} {
+      allow read: if signedIn();
+      allow create: if isAdmin() || isManager();
+      allow update, delete: if isAdmin();
+    }
   }
-} 
+}
