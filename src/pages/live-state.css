@@ -1,8 +1,0 @@
-.liveState{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.3px;white-space:nowrap}
-.liveState.pending{background:#fff1c7;color:#8d6700}
-.liveState.upcoming{background:#e3ecff;color:#2d54b0}
-.liveState.active{background:#d9f4e4;color:#1b7346}
-.liveState.overdue{background:#f9dede;color:#a33e3e}
-.liveState.done{background:#e9ebed;color:#5a6066}
-.liveState.expired,.liveState.cancelled{background:#f4dddd;color:#9a3e3e}
-.dark .liveState.done{background:#272b2f;color:#aab0b5}
