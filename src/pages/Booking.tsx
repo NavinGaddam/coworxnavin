@@ -1,112 +1,1543 @@
 // @ts-nocheck
-import {useEffect,useMemo,useRef,useState} from "react";
-import {AlertCircle,CalendarDays,CheckCircle2,Clock3,KeyRound,Lock,MessageCircle,Mic2,Monitor,Phone,Plus,Users,Building2,Percent,Zap,UserPlus,Save} from "lucide-react";
-import {Space,desks,confStarts,meetingStarts,podStarts,addHours,addDays,dateSpan,localToday,BUSINESS_START,BUSINESS_END,isWednesday} from "./types";
-import {createBooking,createCustomerProfile,getUserByEmail,loadOperationsSettings,loadPolicy,saveUserProfile,watchAddons,watchCoupons,watchResourceBlocksRange,watchHolidays,watchPricingRules} from "../lib/firestore";
+import CustomerPicker from "../components/CustomerPicker";
+import { watchSetting, watchLocksRange } from "../lib/platform";
+import { validEmail, validPhone } from "../lib/customer";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertCircle,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  KeyRound,
+  Lock,
+  MessageCircle,
+  Mic2,
+  Monitor,
+  Phone,
+  Plus,
+  Users,
+  Building2,
+  Percent,
+  Zap,
+  UserPlus,
+  Save,
+} from "lucide-react";
+import {
+  Space,
+  desks,
+  confStarts,
+  meetingStarts,
+  podStarts,
+  addHours,
+  addDays,
+  dateSpan,
+  localToday,
+  BUSINESS_START,
+  BUSINESS_END,
+  isWednesday,
+} from "./types";
+import {
+  createBooking,
+  createCustomerProfile,
+  getUserByEmail,
+  loadOperationsSettings,
+  loadPolicy,
+  saveUserProfile,
+  watchAddons,
+  watchCoupons,
+  watchResourceBlocksRange,
+  watchHolidays,
+  watchPricingRules,
+} from "../lib/firestore";
 import conferenceImage from "../assets/conference-2.webp";
 import podcastImage from "../assets/podcast.webp";
-import {DateRangePicker} from "./DatePicker";
+import { DateRangePicker } from "./DatePicker";
 import "./booking.css";
 import "./ui-fixes.css";
 import "./multi-day.css";
 import "./booking-enhancements.css";
 
-const PREMIUM=new Set([2,3,9,15,22]);
-const FLOOR:Array<string|null>=["D04","D03","D02","D01","D05","D06","D07","D08","D11","D10","D09",null,"D12","D13","D14","D15","D19","D18","D17","D16","D20","D21","D22",null];
-const MAP=Object.fromEntries(desks.map(d=>[d.id,d]));
-const activeLock=(x:any)=>x.status==="Confirmed"||(x.status==="Pending"&&(x.expiresAt?.toMillis?.()||0)>Date.now());
-const busy=(locks:any[],space:string,slot:string)=>locks.some(x=>x.inventoryId===space&&x.start===slot&&activeLock(x));
-const freeHours=(locks:any[],space:string,start:string)=>{let n=0;for(let i=0;i<10;i++){const t=addHours(start,i);if(t>=BUSINESS_END||busy(locks,space,t))break;n++;}return n;};
+const PREMIUM = new Set([2, 3, 9, 15, 22]);
+const FLOOR: Array<string | null> = [
+  "D04",
+  "D03",
+  "D02",
+  "D01",
+  "D05",
+  "D06",
+  "D07",
+  "D08",
+  "D11",
+  "D10",
+  "D09",
+  null,
+  "D12",
+  "D13",
+  "D14",
+  "D15",
+  "D19",
+  "D18",
+  "D17",
+  "D16",
+  "D20",
+  "D21",
+  "D22",
+  null,
+];
+const MAP = Object.fromEntries(desks.map((d) => [d.id, d]));
+const activeLock = (x: any) =>
+  x.status === "Confirmed" ||
+  (x.status === "Pending" && (x.expiresAt?.toMillis?.() || 0) > Date.now());
+const busy = (locks: any[], space: string, slot: string) =>
+  locks.some(
+    (x) => x.inventoryId === space && x.start === slot && activeLock(x),
+  );
+const freeHours = (locks: any[], space: string, start: string) => {
+  let n = 0;
+  for (let i = 0; i < 10; i++) {
+    const t = addHours(start, i);
+    if (t >= BUSINESS_END || busy(locks, space, t)) break;
+    n++;
+  }
+  return n;
+};
 
-export default function Booking(p:any){
- const isDesk=p.space==="desk"||p.space==="cubicle";
- const selected:string[]=p.selectedSeats||[];
- const locks:any[]=p.roomLocks||[];
- const [endDate,setEndDate]=useState(p.date||localToday());
- const [modal,setModal]=useState(false);
- const [message,setMessage]=useState("");
- const [profile,setProfile]=useState({mobile:p.phoneNumber||(p.staffBooking?"":p.myProfile?.mobile||""),gender:p.staffBooking?"":p.myProfile?.gender||"",dob:p.staffBooking?"":p.myProfile?.dob||"",profession:p.staffBooking?"":p.myProfile?.profession||"",otherProfession:""});
- const [custDropOpen,setCustDropOpen]=useState(false);
- const [addingNew,setAddingNew]=useState(false);
- const [walkInName,setWalkInName]=useState("");
- const [newCustomer,setNewCustomer]=useState<any>({name:"",email:"",mobile:"",gender:"",dob:"",profession:""});
- const [savingCustomer,setSavingCustomer]=useState(false);
- const [customerSaved,setCustomerSaved]=useState(false);
- const custMatches=useMemo(()=>{const q=String(p.customerEmail||"").trim().toLowerCase();if(!q||!p.users)return[];return p.users.filter((u:any)=>(u.email||"").toLowerCase().includes(q)||(u.name||"").toLowerCase().includes(q)||(u.phone||"").toLowerCase().includes(q.replace(/\D/g,""))).slice(0,6)},[p.customerEmail,p.users]);
- const pickCustomer=(u:any)=>{p.setCustomerEmail(u.email||"");p.setPhoneNumber(u.phone||"");setWalkInName(u.name||"");setNewCustomer({name:u.name||"",email:u.email||"",mobile:u.phone||"",gender:u.gender||"",dob:u.dob||"",profession:u.profession||""});setProfile({mobile:u.phone||"",gender:u.gender||"",dob:u.dob||"",profession:u.profession||"",otherProfession:""});setCustomerSaved(true);setAddingNew(false);setCustDropOpen(false);setMessage("");};
- const startNewCustomer=(prefill:any={})=>{const email=String(prefill.email||p.customerEmail||"").trim().toLowerCase();const mobile=String(prefill.mobile||p.phoneNumber||"").trim();setNewCustomer({name:String(prefill.name||walkInName||"").trim(),email,mobile,gender:String(prefill.gender||"").trim(),dob:String(prefill.dob||"").trim(),profession:String(prefill.profession||"").trim()});setAddingNew(true);setCustomerSaved(false);setCustDropOpen(false);setMessage("");};
- const saveNewCustomer=async()=>{const data={...newCustomer,email:String(newCustomer.email||p.customerEmail||"").trim().toLowerCase(),name:String(newCustomer.name||"").trim(),mobile:String(newCustomer.mobile||p.phoneNumber||"").trim()};if(!data.name)return setMessage("Enter the new customer's full name.");if(!data.email||!data.email.includes("@"))return setMessage("Enter a valid customer email.");if(data.mobile.replace(/\D/g,"").length<10)return setMessage("Enter a valid 10-digit customer mobile number.");if(!data.dob)return setMessage("Enter the customer's date of birth.");if(!data.profession)return setMessage("Select the customer's profession.");setSavingCustomer(true);try{const saved=await createCustomerProfile({name:data.name,email:data.email,phone:data.mobile,gender:data.gender,dob:data.dob,profession:data.profession},p.user?.uid||"",p.user?.email||"");p.setCustomerEmail(saved.email);p.setPhoneNumber(saved.phone||data.mobile);setWalkInName(saved.name||data.name);setProfile({mobile:saved.phone||data.mobile,gender:saved.gender||data.gender,dob:saved.dob||data.dob,profession:saved.profession||data.profession,otherProfession:""});setNewCustomer({name:saved.name||data.name,email:saved.email,mobile:saved.phone||data.mobile,gender:saved.gender||data.gender,dob:saved.dob||data.dob,profession:saved.profession||data.profession});setCustomerSaved(true);setAddingNew(false);setMessage("Customer saved. You can continue with this booking.");}catch(e:any){setMessage(e?.message||"Could not save the new customer. Please try again")}finally{setSavingCustomer(false)}};
- const [policy,setPolicy]=useState<any>({maxAdvanceDays:60,businessStart:BUSINESS_START,businessEnd:BUSINESS_END});
- const [ops,setOps]=useState<any>({referralEnabled:false,referralRewardPercent:0});
- const [coupons,setCoupons]=useState<any[]>([]);
- useEffect(()=>{if(!p.myProfile||p.staffBooking)return;setProfile(x=>({mobile:x.mobile||p.myProfile.mobile||"",gender:x.gender||p.myProfile.gender||"",dob:x.dob||p.myProfile.dob||"",profession:x.profession||p.myProfile.profession||"",otherProfession:x.otherProfession}))},[p.myProfile,p.staffBooking]);
- const prevStaffBooking=useRef(p.staffBooking);
- useEffect(()=>{if(prevStaffBooking.current!==p.staffBooking){setProfile({mobile:p.phoneNumber||(p.staffBooking?"":p.myProfile?.mobile||""),gender:p.staffBooking?"":p.myProfile?.gender||"",dob:p.staffBooking?"":p.myProfile?.dob||"",profession:p.staffBooking?"":p.myProfile?.profession||"",otherProfession:""});setWalkInName("");setAddingNew(false);setCustomerSaved(false);setNewCustomer({name:"",email:"",mobile:"",gender:"",dob:"",profession:""});prevStaffBooking.current=p.staffBooking;}},[p.staffBooking]);
- const [addons,setAddons]=useState<any[]>([]);
- const [blocks,setBlocks]=useState<any[]>([]);
- const [couponCode,setCouponCode]=useState("");
- const [referralCode,setReferralCode]=useState("");
- const [amenities,setAmenities]=useState<string[]>([]);
- const [addonQty,setAddonQty]=useState<Record<string,number>>({});
- const [notes,setNotes]=useState("");
- const [holidays,setHolidays]=useState<any[]>([]);
- const [pricingRules,setPricingRules]=useState<any[]>([]);
- useEffect(()=>{loadPolicy().then(setPolicy).catch(()=>{});loadOperationsSettings().then(setOps).catch(()=>{});const a=watchCoupons(setCoupons,()=>{}),b=watchAddons(setAddons,()=>{}),c=watchHolidays(setHolidays,()=>{}),d=watchPricingRules(setPricingRules,()=>{});return()=>{a();b();c();d();}},[]);
- useEffect(()=>{if(endDate<p.date)setEndDate(p.date);},[p.date,endDate]);
- const start=isDesk?"":(p.space==="meeting"?p.meeting:p.space==="conference"?p.conf:p.pod);
- const duration=isDesk?1:(p.space==="meeting"?Number(p.meetingDuration||1):p.space==="conference"?Number(p.confDuration||1):Number(p.podDuration||1));
- const end=isDesk?BUSINESS_END:addHours(start,duration);
- const dates=useMemo(()=>dateSpan(p.date,endDate),[p.date,endDate]);
- const days=dates.length;
- useEffect(()=>{const u=watchResourceBlocksRange(dates,setBlocks,()=>{});return()=>u()},[dates.join(",")]);
- const maxDate=addDays(localToday(),Number(policy.maxAdvanceDays||60));
- const withinAdvance=p.date>=localToday()&&endDate>=p.date&&endDate<=maxDate;
- const withinHours=isDesk||(start>=policy.businessStart&&end<=policy.businessEnd&&start<end);
- const roomAvailable=isDesk?0:freeHours(locks,p.space,start);
- const startBusy=!isDesk&&busy(locks,p.space,start);
- const blockedRange=isDesk?selected.some(id=>dates.some(d=>blocks.some(b=>b.active&&b.date===d&&b.inventoryId===`desk-${id}`))):dates.some(d=>blocks.some(b=>b.active&&b.date===d&&b.inventoryId===p.space));
- const blockedForDesk=(id:string)=>dates.some(d=>blocks.some(b=>b.active&&b.date===d&&b.inventoryId===`desk-${id}`));
- const pricingRuleFor=(d:string)=>pricingRules.filter(r=>r.active!==false&&r.startDate<=d&&r.endDate>=d).sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0))[0];
- const dayBase=(d:string)=>{const rule=pricingRuleFor(d),eff=rule?.pricing||{};if(isDesk)return selected.reduce((sum,id)=>{const premium=MAP[id]?.premium;const overridden=eff[id]??(premium?eff.desk_premium:eff.desk_basic);const price=overridden??(p.deskPrices?.[id]??(premium?p.prices.desk_premium:p.prices.desk_basic));return sum+Number(price||0);},0);const key=p.space==="meeting"?"meeting_hourly":p.space==="conference"?"conference_hourly":"podcast_hourly";const rate=eff[key]??roomPrice(p);return rate*duration;};
- const baseTotal=useMemo(()=>dates.reduce((sum,d)=>sum+dayBase(d),0),[dates.join(","),selected.join(","),pricingRules,p.deskPrices,p.prices,duration,isDesk]);
- const dailyBase=days?Math.round(baseTotal/days):0;
- const stayDiscount=days>=5?Math.round(baseTotal*.1):0;
- const bulkDiscount=isDesk&&selected.length>5?Math.round(baseTotal*.1):0;
- const wednesdayDates=dates.filter(isWednesday);
- const wednesdayDiscount=wednesdayDates.length&&Number(ops.wednesdayDiscountPercent||0)>0?wednesdayDates.reduce((sum,d)=>sum+Math.round(dayBase(d)*Number(ops.wednesdayDiscountPercent||0)/100),0):0;
- const holidayDates=dates.filter(d=>holidays.some((h:any)=>h.date===d));
- const coupon=coupons.find(c=>c.active&&String(c.code||"").toUpperCase()===couponCode.trim().toUpperCase()&&(!c.expiresAt||c.expiresAt.toMillis?.()>Date.now())&&(!c.maxUses||Number(c.usedCount||0)<Number(c.maxUses)));
- const couponDiscount=coupon?(coupon.type==="percent"?Math.round(baseTotal*Number(coupon.value||0)/100):Math.min(baseTotal,Number(coupon.value||0))):0;
- const referralDiscount=ops.referralEnabled&&referralCode.trim()?Math.round(baseTotal*Number(ops.referralRewardPercent||0)/100):0;
- const durationValue=isDesk?days:duration;
- const eligibleOffers=(p.offers||[]).filter((o:any)=>{const minD=Number(o.minDays||0),maxD=Number(o.maxDays||0);if(!minD&&!maxD)return true;if(minD&&durationValue<minD)return false;if(maxD&&durationValue>maxD)return false;return true;});
- const bestOffer=eligibleOffers.map((o:any)=>({o,disc:o.type==="percent"?Math.round(baseTotal*Number(o.value||0)/100):Math.min(baseTotal,Number(o.value||0))})).sort((a,b)=>b.disc-a.disc)[0];
- const offerDiscount=bestOffer?.disc||0;
- const discount=Math.min(baseTotal,stayDiscount+bulkDiscount+couponDiscount+referralDiscount+offerDiscount+wednesdayDiscount);
- const selectedAddons=addons.filter(a=>a.active&&(a.space==="all"||a.space===p.space)).map(a=>{const qty=Number(addonQty[a.id]||0);return{id:a.id,name:a.name,qty,unitPrice:Number(a.unitPrice||0),total:qty*Number(a.unitPrice||0)};}).filter(a=>a.qty>0);
- const addonTotal=selectedAddons.reduce((n,a)=>n+a.total,0);
- const total=Math.max(0,baseTotal-discount+addonTotal);
- const valid=isDesk?selected.length>0:!startBusy&&roomAvailable>0&&duration<=roomAvailable;
- const openModal=()=>{if(!withinAdvance)return setMessage(`Bookings can be made up to ${policy.maxAdvanceDays} days ahead.`);if(!withinHours)return setMessage("Bookings must stay within 9:00 AM–7:00 PM.");if(holidayDates.length)return setMessage(`Coworx Central is closed on ${holidayDates.join(", ")}${holidayDates.length===1?"":""} (holiday). Please choose different dates.`);if(blockedRange)return setMessage("One or more selected resources are under maintenance.");if(!valid)return setMessage(isDesk?"Select at least one desk.":`Only ${roomAvailable} continuous hour${roomAvailable===1?"":"s"} is available from ${start}.`);setMessage("");const savedMobile=String(p.myProfile?.mobile||p.phoneNumber||profile.mobile||"").trim();const savedProfession=String(p.myProfile?.profession||profile.profession||"").trim();if(p.staffBooking){setModal(false);void submit();return;}if(savedMobile.replace(/\D/g,"").length>=10&&savedProfession&&savedProfession!=="Other"){submit({mobile:savedMobile,gender:p.myProfile?.gender||profile.gender||"",dob:p.myProfile?.dob||profile.dob||"",profession:savedProfession,otherProfession:""});return}setProfile(x=>({...x,mobile:p.phoneNumber||x.mobile}));setModal(true);};
- const submit=async(overrideProfile?:any)=>{const useProfile=overrideProfile||profile;const phone=useProfile.mobile.trim();const profession=useProfile.profession==="Other"?String(useProfile.otherProfession||"").trim():String(useProfile.profession||"").trim();const email=(p.staffBooking?String(p.customerEmail||""):String(p.user?.email||"")).trim().toLowerCase();if(!email.includes("@"))return setMessage("Enter a valid customer email.");if(phone.replace(/\D/g,"").length<10)return setMessage("Please enter a valid 10-digit mobile number to continue.");try{let name=p.user?.displayName||email.split("@")[0]||"Coworx Member";if(p.staffBooking){const existing=await getUserByEmail(email);if(existing?.blocked)return setMessage("This customer is blocked from new bookings.");if(walkInName.trim())name=walkInName.trim();else if(existing?.name)name=existing.name;}else{try{await saveUserProfile(p.user.uid,{phone,gender:useProfile.gender,dob:useProfile.dob,profession});p.onProfileSaved?.({mobile:phone,gender:useProfile.gender,dob:useProfile.dob,profession});}catch(profileErr){console.warn("Could not save profile details",profileErr);}}const ids=isDesk?selected.map(id=>`desk-${id}`):[p.space];const lockKeys=isDesk?selected.flatMap(id=>dates.map(d=>`${d}_desk-${id}_day`)):dates.flatMap(d=>Array.from({length:duration},(_,i)=>`${d}_${p.space}_${addHours(start,i)}`));await createBooking({date:p.date,endDate,days,dates,space:p.space,inventoryId:ids[0],inventoryIds:ids,lockKeys,label:isDesk?`${selected.length} Desk${selected.length===1?"":"s"}`:getTitle(p.space),userId:p.staffBooking?`walkin:${email}`:p.user.uid,userEmail:p.user?.email||email,customerName:name,customerEmail:email,customerPhone:phone,createdByRole:p.staffBooking?(p.staff?"Staff":"User"):"User",walkIn:!!p.staffBooking,start:isDesk?undefined:start,end:isDesk?undefined:end,durationHours:isDesk?days:duration*days,base:baseTotal,discount,total,offerId:bestOffer?.o?.id||null,couponCode:coupon?.code||"",referralCode:referralCode.trim().toUpperCase(),addons:selectedAddons,amenities,notes,status:p.staffBooking?"Confirmed":"Pending"});if(!p.staffBooking){const deskText=isDesk?`Desk number(s): ${selected.join(", ")}`:"";const text=`Hello Coworx Central, I want to book ${isDesk?`${selected.length} desk(s) — ${selected.join(", ")}`:getTitle(p.space)} from ${p.date} to ${endDate}${isDesk?"":` · ${start}–${end}`}. ${deskText} Total: ₹${total}. Mobile: ${phone}.`;window.open(`https://wa.me/919970836509?text=${encodeURIComponent(text)}`,"_blank");}setModal(false);setMessage(p.staffBooking?`Booking confirmed for ${email}.`:`Request created. The slot is held for 15 minutes while payment is completed.`);p.setSelectedSeats([]);p.setStaffBooking(false);p.setCustomerEmail("");setWalkInName("");setAddingNew(false);setCustomerSaved(false);}catch(e:any){const conflicts:{inventoryId:string}[]=e?.conflicts||[];if(conflicts.length&&isDesk){const conflictIds=new Set(conflicts.map(c=>String(c.inventoryId).replace(/^desk-/,"")));p.setSelectedSeats(selected.filter(id=>!conflictIds.has(id)));}setMessage(e?.message||"Booking failed. Please check availability and try again.");}};
- return <main className="page bookingPage"><div className="bookingIntro"><div><span className="eyebrow">MAKE A RESERVATION</span><h2>{p.staffBooking?"Book for a customer":"Choose your workspace."}</h2><p>All services operate <strong>9:00 AM–7:00 PM</strong>. Timed rooms stop at the next booked time or 7:00 PM.</p></div>{p.staff&&<div className="staffMode"><span>Staff booking</span><div className="staffToggle"><button className={!p.staffBooking?"active":""} onClick={()=>p.setStaffBooking(false)}>My booking</button><button className={p.staffBooking?"active":""} onClick={()=>{p.setStaffBooking(true);setCustomerSaved(false);setAddingNew(false);}}><Users size={15}/> Walk-in customer</button></div></div>}{p.staffBooking&&<div className="customerBox"><label className="custPickerWrap">Search existing customer<input value={p.customerEmail||""} onChange={e=>{p.setCustomerEmail(e.target.value);setCustDropOpen(true);setAddingNew(false);setCustomerSaved(false);}} onFocus={()=>setCustDropOpen(true)} onBlur={()=>setTimeout(()=>setCustDropOpen(false),150)} placeholder="Search by name, email or mobile" autoComplete="off"/>{custDropOpen&&<div className="custDropdown">{custMatches.map((u:any)=><button type="button" key={u.uid||u.id} onMouseDown={()=>pickCustomer(u)}><b>{u.name||u.email}</b><span>{u.email}{u.phone?` · ${u.phone}`:""}</span></button>)}<button type="button" className="custAddNewBtn" onMouseDown={()=>startNewCustomer()}><UserPlus size={14}/> Add new customer</button></div>}</label>{addingNew?<div className="newCustomerPanel"><div className="panelHead"><div><span className="eyebrow">NEW CUSTOMER</span><h3>Create customer profile</h3><small>Save the customer first, then continue with the booking.</small></div></div><div className="formGrid"><label>Full name *<input value={newCustomer.name} onChange={e=>setNewCustomer({...newCustomer,name:e.target.value})} placeholder="Full name"/></label><label>Email *<input type="email" value={newCustomer.email||p.customerEmail||""} onChange={e=>setNewCustomer({...newCustomer,email:e.target.value})} placeholder="customer@email.com"/></label><label>Mobile *<input type="tel" inputMode="tel" value={newCustomer.mobile||p.phoneNumber||""} onChange={e=>setNewCustomer({...newCustomer,mobile:e.target.value})} placeholder="+91 98765 43210"/></label><label>Gender<select value={newCustomer.gender||""} onChange={e=>setNewCustomer({...newCustomer,gender:e.target.value})}><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option><option>Prefer not to say</option></select></label><label>Date of birth *<input type="date" value={newCustomer.dob||""} onChange={e=>setNewCustomer({...newCustomer,dob:e.target.value})}/></label><label>Profession *<select value={newCustomer.profession||""} onChange={e=>setNewCustomer({...newCustomer,profession:e.target.value})}><option value="">Select profession</option><option>IT Professional</option><option>Developer</option><option>Tester</option><option>Marketing Team</option><option>Student</option><option>Designer</option><option>Consultant</option><option>Business</option><option>Other</option></select></label></div><div className="profileSettingsFooter"><small>Customer data is saved to the Coworx customer database after verification.</small><button type="button" className="primary" disabled={savingCustomer} onClick={saveNewCustomer}>{savingCustomer?"Saving customer…":"Save customer & continue"}<Save size={16}/></button></div></div>:<>{String(p.customerEmail||"").length>0&&<><label>Customer name<input value={walkInName} onChange={e=>setWalkInName(e.target.value)} placeholder="Full name"/></label><label>Customer mobile *<input value={p.phoneNumber||""} onChange={e=>{p.setPhoneNumber(e.target.value);setCustomerSaved(false)}} placeholder="+91 98765 43210"/></label>{customerSaved?<div className="successBox"><CheckCircle2/><span>Customer profile saved and synced. Continue to complete the booking.</span></div>:<button type="button" className="ghost small" onClick={()=>startNewCustomer({name:walkInName,email:p.customerEmail,mobile:p.phoneNumber})}><UserPlus/> Create new customer profile</button>}</>}</>}</div>}</div><div className="bookingGrid"><section className="panel bookingPanel"><DateRangePicker start={p.date} end={endDate} min={localToday()} max={maxDate} onChange={(s,e)=>{p.setDate(s);setEndDate(e);}} highlight={d=>holidays.some((h:any)=>h.date===d)?"holiday":isWednesday(d)?"wednesday":undefined}/><div className="rangeSummary standaloneRangeSummary"><CalendarDays size={17}/><strong>{days} day{days===1?"":"s"}</strong><small>{days>=5?"10% discount unlocked":`Advance limit: ${policy.maxAdvanceDays} days`}</small></div>{wednesdayDates.length>0&&<div className="wednesdayNotice"><Zap size={16}/><div><b>Heads up — {wednesdayDates.length>1?"some of your dates fall":"your date falls"} on a Wednesday.</b><span>MSEB may cut power in Solapur for 2–3 hours on Wednesdays and Coworx Central isn't liable for those outages. As a thank-you for your patience we're applying a {ops.wednesdayDiscountPercent||0}% discount automatically for {wednesdayDates.length>1?"those days":"that day"}.</span></div></div>}{holidayDates.length>0&&<div className="wednesdayNotice holidayNotice"><AlertCircle size={16}/><div><b>Coworx Central is closed on {holidayDates.join(", ")}.</b><span>Please choose different dates — this range can't be booked.</span></div></div>}<div className="tabs">{[{value:"desk" as Space,label:"Desks"},{value:"meeting" as Space,label:"Meeting Room"},{value:"conference" as Space,label:"Conference Room"},{value:"podcast" as Space,label:"Creator Studio"}].map(x=><button key={x.value} className={(p.space===x.value||x.value==="desk"&&p.space==="cubicle")?"active":""} onClick={()=>{p.setSpace(x.value);p.setSelectedSeats([]);}}>{x.label}</button>)}</div>{isDesk?<DeskFloor selected={selected} booked={p.booked||[]} prices={p.prices} deskPrices={p.deskPrices||{}} maintenance={blockedForDesk} onToggle={id=>{if(p.booked?.includes(`desk-${id}`)||blockedForDesk(id))return;p.setSelectedSeats(selected.includes(id)?selected.filter(x=>x!==id):[...selected,id]);}}/>:<RoomCard p={p} space={p.space} start={start} duration={duration} available={roomAvailable} locks={locks}/>}<Extras addons={addons} qty={addonQty} setQty={setAddonQty} couponCode={couponCode} setCouponCode={setCouponCode} coupon={coupon} referralCode={referralCode} setReferralCode={setReferralCode} reward={ops.referralRewardPercent} referralEnabled={ops.referralEnabled} amenities={amenities} setAmenities={setAmenities} notes={notes} setNotes={setNotes}/></section><Summary staffBooking={!!p.staffBooking} title={getTitle(p.space)} date={p.date} endDate={endDate} days={days} start={start} end={end} isDesk={isDesk} selected={selected} dailyBase={dailyBase} baseTotal={baseTotal} stayDiscount={stayDiscount} bulkDiscount={bulkDiscount} couponDiscount={couponDiscount} coupon={coupon} referralDiscount={referralDiscount} offerDiscount={offerDiscount} bestOffer={bestOffer?.o} wednesdayDiscount={wednesdayDiscount} addonTotal={addonTotal} total={total} withinAdvance={withinAdvance} maintenance={blockedRange||holidayDates.length>0} roomBooked={startBusy} valid={valid} onBook={openModal} message={message} limit={policy.maxAdvanceDays}/></div>{modal&&<ProfileModal title={getTitle(p.space)} date={p.date} endDate={endDate} total={total} profile={profile} setProfile={setProfile} onClose={()=>setModal(false)} onContinue={submit} message={message}/>}</main>;
+export default function Booking(p: any) {
+  const isDesk = p.space === "desk" || p.space === "cubicle";
+  const selected: string[] = p.selectedSeats || [];
+  const [locks, setLocks] = useState<any[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [endDate, setEndDate] = useState(p.date || localToday());
+  const [modal, setModal] = useState(false);
+  const [message, setMessage] = useState("");
+  const [profile, setProfile] = useState({
+    mobile: p.phoneNumber || (p.staffBooking ? "" : p.myProfile?.mobile || ""),
+    gender: p.staffBooking ? "" : p.myProfile?.gender || "",
+    dob: p.staffBooking ? "" : p.myProfile?.dob || "",
+    profession: p.staffBooking ? "" : p.myProfile?.profession || "",
+    otherProfession: "",
+  });
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
+  const [whatsAppUrl, setWhatsAppUrl] = useState("");
+  const [policy, setPolicy] = useState<any>({
+    maxAdvanceDays: 60,
+    businessStart: BUSINESS_START,
+    businessEnd: BUSINESS_END,
+  });
+  const [ops, setOps] = useState<any>({
+    referralEnabled: false,
+    referralRewardPercent: 0,
+  });
+  const [coupons, setCoupons] = useState<any[]>([]);
+  useEffect(() => {
+    if (!p.myProfile || p.staffBooking) return;
+    setProfile((x) => ({
+      mobile: x.mobile || p.myProfile.mobile || "",
+      gender: x.gender || p.myProfile.gender || "",
+      dob: x.dob || p.myProfile.dob || "",
+      profession: x.profession || p.myProfile.profession || "",
+      otherProfession: x.otherProfession,
+    }));
+  }, [p.myProfile, p.staffBooking]);
+  useEffect(() => {
+    setSelectedCustomer(null);
+    setMessage("");
+    setProfile({
+      mobile: p.staffBooking ? "" : p.myProfile?.mobile || "",
+      gender: p.staffBooking ? "" : p.myProfile?.gender || "",
+      dob: p.staffBooking ? "" : p.myProfile?.dob || "",
+      profession: p.staffBooking ? "" : p.myProfile?.profession || "",
+      otherProfession: "",
+    });
+  }, [p.staffBooking]);
+  const [addons, setAddons] = useState<any[]>([]);
+  const [blocks, setBlocks] = useState<any[]>([]);
+  const [couponCode, setCouponCode] = useState("");
+  const [referralCode, setReferralCode] = useState("");
+  const [amenities, setAmenities] = useState<string[]>([]);
+  const [addonQty, setAddonQty] = useState<Record<string, number>>({});
+  const [notes, setNotes] = useState("");
+  const [holidays, setHolidays] = useState<any[]>([]);
+  const [pricingRules, setPricingRules] = useState<any[]>([]);
+  const [deskRatesByDate, setDeskRatesByDate] = useState<any>({});
+  useEffect(
+    () =>
+      watchSetting("deskPricing", setDeskRatesByDate, (e) =>
+        setLoadError(e.message),
+      ),
+    [],
+  );
+  useEffect(() => {
+    loadPolicy()
+      .then(setPolicy)
+      .catch(() => {});
+    loadOperationsSettings()
+      .then(setOps)
+      .catch(() => {});
+    const a = watchCoupons(setCoupons, () => {}),
+      b = watchAddons(setAddons, () => {}),
+      c = watchHolidays(setHolidays, () => {}),
+      d = watchPricingRules(setPricingRules, () => {});
+    return () => {
+      a();
+      b();
+      c();
+      d();
+    };
+  }, []);
+  useEffect(() => {
+    if (endDate < p.date) setEndDate(p.date);
+  }, [p.date, endDate]);
+  const start = isDesk
+    ? ""
+    : p.space === "meeting"
+      ? p.meeting
+      : p.space === "conference"
+        ? p.conf
+        : p.pod;
+  const duration = isDesk
+    ? 1
+    : p.space === "meeting"
+      ? Number(p.meetingDuration || 1)
+      : p.space === "conference"
+        ? Number(p.confDuration || 1)
+        : Number(p.podDuration || 1);
+  const end = isDesk ? BUSINESS_END : addHours(start, duration);
+  const dates = useMemo(() => dateSpan(p.date, endDate), [p.date, endDate]);
+  const days = dates.length;
+  useEffect(() => {
+    setInventoryLoading(true);
+    setLoadError("");
+    return watchLocksRange(
+      dates,
+      (rows) => {
+        setLocks(rows);
+        setInventoryLoading(false);
+      },
+      (e) => {
+        setInventoryLoading(false);
+        setLoadError(
+          e.message ||
+            "Could not load availability. Please reload before booking.",
+        );
+      },
+    );
+  }, [dates.join(",")]);
+  const bookedDesks = locks.filter(activeLock).map((l) => l.inventoryId);
+
+  useEffect(() => {
+    const u = watchResourceBlocksRange(dates, setBlocks, () => {});
+    return () => u();
+  }, [dates.join(",")]);
+  const maxDate = addDays(localToday(), Number(policy.maxAdvanceDays || 60));
+  const withinAdvance =
+    p.date >= localToday() && endDate >= p.date && endDate <= maxDate;
+  const withinHours =
+    isDesk ||
+    (start >= policy.businessStart && end <= policy.businessEnd && start < end);
+  const roomAvailable = isDesk ? 0 : freeHours(locks, p.space, start);
+  const startBusy = !isDesk && busy(locks, p.space, start);
+  const blockedRange = isDesk
+    ? selected.some((id) =>
+        dates.some((d) =>
+          blocks.some(
+            (b) =>
+              b.active &&
+              b.date === d &&
+              (b.inventoryId === `desk-${id}` || b.inventoryId === id),
+          ),
+        ),
+      )
+    : dates.some((d) =>
+        blocks.some(
+          (b) => b.active && b.date === d && b.inventoryId === p.space,
+        ),
+      );
+  const blockedForDesk = (id: string) =>
+    dates.some((d) =>
+      blocks.some(
+        (b) =>
+          b.active &&
+          b.date === d &&
+          (b.inventoryId === `desk-${id}` || b.inventoryId === id),
+      ),
+    );
+  const pricingRuleFor = (d: string) =>
+    pricingRules
+      .filter((r) => r.active !== false && r.startDate <= d && r.endDate >= d)
+      .sort(
+        (a, b) =>
+          (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0),
+      )[0];
+  const dayBase = (d: string) => {
+    const rule = pricingRuleFor(d),
+      eff = rule?.pricing || {};
+    if (isDesk)
+      return selected.reduce((sum, id) => {
+        const premium = MAP[id]?.premium;
+        const overridden =
+          eff[id] ?? (premium ? eff.desk_premium : eff.desk_basic);
+        const price =
+          overridden ??
+          deskRatesByDate[d]?.[id] ??
+          (premium ? p.prices.desk_premium : p.prices.desk_basic);
+        return sum + Number(price || 0);
+      }, 0);
+    const key =
+      p.space === "meeting"
+        ? "meeting_hourly"
+        : p.space === "conference"
+          ? "conference_hourly"
+          : "podcast_hourly";
+    const rate = eff[key] ?? roomPrice(p);
+    return rate * duration;
+  };
+  const baseTotal = useMemo(
+    () => dates.reduce((sum, d) => sum + dayBase(d), 0),
+    [
+      dates.join(","),
+      selected.join(","),
+      pricingRules,
+      deskRatesByDate,
+      p.space,
+      p.prices,
+      duration,
+      isDesk,
+    ],
+  );
+  const dailyBase = days ? Math.round(baseTotal / days) : 0;
+  const stayDiscount = days >= 5 ? Math.round(baseTotal * 0.1) : 0;
+  const bulkDiscount =
+    isDesk && selected.length > 5 ? Math.round(baseTotal * 0.1) : 0;
+  const wednesdayDates = dates.filter(isWednesday);
+  const wednesdayDiscount =
+    wednesdayDates.length && Number(ops.wednesdayDiscountPercent || 0) > 0
+      ? wednesdayDates.reduce(
+          (sum, d) =>
+            sum +
+            Math.round(
+              (dayBase(d) * Number(ops.wednesdayDiscountPercent || 0)) / 100,
+            ),
+          0,
+        )
+      : 0;
+  const holidayDates = dates.filter((d) =>
+    holidays.some((h: any) => h.date === d),
+  );
+  const coupon = coupons.find(
+    (c) =>
+      c.active &&
+      String(c.code || "").toUpperCase() === couponCode.trim().toUpperCase() &&
+      (!c.expiresAt || c.expiresAt.toMillis?.() > Date.now()) &&
+      (!c.maxUses || Number(c.usedCount || 0) < Number(c.maxUses)),
+  );
+  const couponDiscount = coupon
+    ? coupon.type === "percent"
+      ? Math.round((baseTotal * Number(coupon.value || 0)) / 100)
+      : Math.min(baseTotal, Number(coupon.value || 0))
+    : 0;
+  const referralDiscount =
+    ops.referralEnabled && referralCode.trim()
+      ? Math.round((baseTotal * Number(ops.referralRewardPercent || 0)) / 100)
+      : 0;
+  const durationValue = isDesk ? days : duration;
+  const eligibleOffers = (p.offers || []).filter((o: any) => {
+    const minD = Number(o.minDays || 0),
+      maxD = Number(o.maxDays || 0);
+    if (!minD && !maxD) return true;
+    if (minD && durationValue < minD) return false;
+    if (maxD && durationValue > maxD) return false;
+    return true;
+  });
+  const bestOffer = eligibleOffers
+    .map((o: any) => ({
+      o,
+      disc:
+        o.type === "percent"
+          ? Math.round((baseTotal * Number(o.value || 0)) / 100)
+          : Math.min(baseTotal, Number(o.value || 0)),
+    }))
+    .sort((a, b) => b.disc - a.disc)[0];
+  const offerDiscount = bestOffer?.disc || 0;
+  const discount = Math.min(
+    baseTotal,
+    stayDiscount +
+      bulkDiscount +
+      couponDiscount +
+      referralDiscount +
+      offerDiscount +
+      wednesdayDiscount,
+  );
+  const selectedAddons = addons
+    .filter((a) => a.active && (a.space === "all" || a.space === p.space))
+    .map((a) => {
+      const qty = Number(addonQty[a.id] || 0);
+      return {
+        id: a.id,
+        name: a.name,
+        qty,
+        unitPrice: Number(a.unitPrice || 0),
+        total: qty * Number(a.unitPrice || 0),
+      };
+    })
+    .filter((a) => a.qty > 0);
+  const addonTotal = selectedAddons.reduce((n, a) => n + a.total, 0);
+  const total = Math.max(0, baseTotal - discount + addonTotal);
+  const valid = isDesk
+    ? selected.length > 0
+    : !startBusy && roomAvailable > 0 && duration <= roomAvailable;
+  const openModal = () => {
+    if (inventoryLoading || loadError)
+      return setMessage(loadError || "Availability is still loading.");
+    if (!withinAdvance)
+      return setMessage(
+        `Bookings can be made up to ${policy.maxAdvanceDays} days ahead.`,
+      );
+    if (!withinHours)
+      return setMessage("Bookings must stay within 9:00 AM–7:00 PM.");
+    if (holidayDates.length)
+      return setMessage(
+        `Coworx Central is closed on ${holidayDates.join(", ")}${holidayDates.length === 1 ? "" : ""} (holiday). Please choose different dates.`,
+      );
+    if (blockedRange)
+      return setMessage(
+        "One or more selected resources are under maintenance.",
+      );
+    if (!valid)
+      return setMessage(
+        isDesk
+          ? "Select at least one desk."
+          : `Only ${roomAvailable} continuous hour${roomAvailable === 1 ? "" : "s"} is available from ${start}.`,
+      );
+    setMessage("");
+    const savedMobile = String(
+      p.myProfile?.mobile || p.phoneNumber || profile.mobile || "",
+    ).trim();
+    const savedProfession = String(
+      p.myProfile?.profession || profile.profession || "",
+    ).trim();
+    if (p.staffBooking) {
+      if (!selectedCustomer?.uid)
+        return setMessage(
+          "Choose an existing customer or save a new customer first.",
+        );
+      setModal(false);
+      void submit();
+      return;
+    }
+    if (
+      savedMobile.replace(/\D/g, "").length >= 10 &&
+      savedProfession &&
+      savedProfession !== "Other"
+    ) {
+      submit({
+        mobile: savedMobile,
+        gender: p.myProfile?.gender || profile.gender || "",
+        dob: p.myProfile?.dob || profile.dob || "",
+        profession: savedProfession,
+        otherProfession: "",
+      });
+      return;
+    }
+    setProfile((x) => ({ ...x, mobile: p.phoneNumber || x.mobile }));
+    setModal(true);
+  };
+  const submit = async (overrideProfile?: any) => {
+    if (submitLock.current) return;
+    if (p.staffBooking && !selectedCustomer?.uid)
+      return setMessage(
+        "Choose an existing customer or save a new customer first.",
+      );
+    const useProfile = p.staffBooking
+      ? {
+          mobile: selectedCustomer.phone,
+          gender: selectedCustomer.gender || "",
+          dob: selectedCustomer.dob || "",
+          profession: selectedCustomer.profession || "",
+        }
+      : overrideProfile || profile;
+    const phone = String(useProfile.mobile || "").trim();
+    const profession =
+      useProfile.profession === "Other"
+        ? String(useProfile.otherProfession || "").trim()
+        : String(useProfile.profession || "").trim();
+    const email = String(
+      p.staffBooking ? selectedCustomer.email : p.user?.email || "",
+    )
+      .trim()
+      .toLowerCase();
+    if (!validEmail(email)) return setMessage("Enter a valid customer email.");
+    if (!validPhone(phone))
+      return setMessage("Please enter a valid mobile number.");
+    if (!profession && !p.staffBooking)
+      return setMessage("Please enter your profession.");
+    submitLock.current = true;
+    setSubmitting(true);
+    setMessage("");
+    setWhatsAppUrl("");
+    const waWindow = !p.staffBooking
+      ? window.open("about:blank", "_blank")
+      : null;
+    if (waWindow) waWindow.opener = null;
+    try {
+      let name = p.staffBooking
+        ? selectedCustomer.name
+        : p.user?.displayName || email.split("@")[0];
+      const existing = await getUserByEmail(email);
+      if (existing?.blocked)
+        throw Error("This customer is blocked from new bookings.");
+      if (!p.staffBooking) {
+        await saveUserProfile(p.user.uid, {
+          phone,
+          gender: useProfile.gender,
+          dob: useProfile.dob,
+          profession,
+        });
+        p.onProfileSaved?.({
+          mobile: phone,
+          gender: useProfile.gender,
+          dob: useProfile.dob,
+          profession,
+        });
+      }
+      const ids = isDesk ? selected.map((id) => `desk-${id}`) : [p.space];
+      const lockKeys = isDesk
+        ? selected.flatMap((id) => dates.map((d) => `${d}_desk-${id}_day`))
+        : dates.flatMap((d) =>
+            Array.from(
+              { length: duration },
+              (_, i) => `${d}_${p.space}_${addHours(start, i)}`,
+            ),
+          );
+      await createBooking({
+        date: p.date,
+        endDate,
+        days,
+        dates,
+        space: p.space,
+        inventoryId: ids[0],
+        inventoryIds: ids,
+        lockKeys,
+        label: isDesk
+          ? `${selected.length} Desk${selected.length === 1 ? "" : "s"}`
+          : getTitle(p.space),
+        userId: p.staffBooking ? selectedCustomer.uid : p.user.uid,
+        userEmail: email,
+        customerName: name,
+        customerEmail: email,
+        customerPhone: phone,
+        createdByRole: p.staffBooking ? p.role : "User",
+        walkIn: !!p.staffBooking,
+        start: isDesk ? undefined : start,
+        end: isDesk ? undefined : end,
+        durationHours: isDesk ? days : duration * days,
+        base: baseTotal,
+        discount,
+        total,
+        offerId: bestOffer?.o?.id || null,
+        couponCode: coupon?.code || "",
+        referralCode: referralCode.trim().toUpperCase(),
+        addons: selectedAddons,
+        amenities,
+        notes,
+        status: p.staffBooking && p.canConfirm ? "Confirmed" : "Pending",
+      });
+      if (!p.staffBooking) {
+        const deskText = isDesk ? `Desk number(s): ${selected.join(", ")}` : "";
+        const text = `Hello Coworx Central, I want to book ${isDesk ? `${selected.length} desk(s) — ${selected.join(", ")}` : getTitle(p.space)} from ${p.date} to ${endDate}${isDesk ? "" : ` · ${start}–${end}`}. ${deskText} Total: ₹${total}. Mobile: ${phone}.`;
+        const url = `https://wa.me/919970836509?text=${encodeURIComponent(text)}`;
+        setWhatsAppUrl(url);
+        if (waWindow) waWindow.location.href = url;
+      }
+      setModal(false);
+      setMessage(
+        p.staffBooking
+          ? p.canConfirm
+            ? `Booking confirmed for ${email}. Payment is pending until recorded.`
+            : `Request saved for ${email}. A manager can confirm payment.`
+          : `Request created. The slot is held for 15 minutes while payment is completed.`,
+      );
+      p.setSelectedSeats([]);
+      p.onBooked?.();
+    } catch (e: any) {
+      waWindow?.close();
+      const conflicts: { inventoryId: string }[] = e?.conflicts || [];
+      if (conflicts.length && isDesk) {
+        const conflictIds = new Set(
+          conflicts.map((c) => String(c.inventoryId).replace(/^desk-/, "")),
+        );
+        p.setSelectedSeats(selected.filter((id) => !conflictIds.has(id)));
+      }
+      setMessage(
+        e?.message ||
+          "Booking failed. Please check availability and try again.",
+      );
+    } finally {
+      submitLock.current = false;
+      setSubmitting(false);
+    }
+  };
+  return (
+    <main className="page bookingPage">
+      {whatsAppUrl && (
+        <div className="inlineSuccess" role="status">
+          <CheckCircle2 size={18} /> Booking requested.{" "}
+          <a href={whatsAppUrl} target="_blank" rel="noreferrer">
+            Open WhatsApp
+          </a>
+          <button className="textButton" onClick={() => p.nav?.("bookings")}>
+            View booking
+          </button>
+        </div>
+      )}
+      {loadError && (
+        <p className="inlineError" role="alert">
+          {loadError}
+        </p>
+      )}
+      <div className="bookingIntro">
+        <div>
+          <span className="eyebrow">MAKE A RESERVATION</span>
+          <h2>
+            {p.staffBooking ? "Book for a customer" : "Choose your workspace."}
+          </h2>
+          <p>
+            All services operate <strong>9:00 AM–7:00 PM</strong>. Timed rooms
+            stop at the next booked time or 7:00 PM.
+          </p>
+        </div>
+        {p.staff && (
+          <div className="staffMode">
+            <span>Staff booking</span>
+            <div className="staffToggle">
+              <button
+                className={!p.staffBooking ? "active" : ""}
+                onClick={() => p.setStaffBooking(false)}
+              >
+                My booking
+              </button>
+              <button
+                className={p.staffBooking ? "active" : ""}
+                onClick={() => {
+                  p.setStaffBooking(true);
+                  setSelectedCustomer(null);
+                }}
+              >
+                <Users size={15} /> Walk-in customer
+              </button>
+            </div>
+          </div>
+        )}
+        {p.staffBooking && (
+          <CustomerPicker
+            users={p.users}
+            selected={selectedCustomer}
+            onSelect={setSelectedCustomer}
+            user={p.user}
+            canCreate={p.canCreateCustomer}
+            disabled={submitting}
+          />
+        )}
+      </div>
+      <div className="bookingGrid">
+        <section className="panel bookingPanel">
+          <DateRangePicker
+            start={p.date}
+            end={endDate}
+            min={localToday()}
+            max={maxDate}
+            onChange={(s, e) => {
+              p.setDate(s);
+              setEndDate(e);
+            }}
+            highlight={(d) =>
+              holidays.some((h: any) => h.date === d)
+                ? "holiday"
+                : isWednesday(d)
+                  ? "wednesday"
+                  : undefined
+            }
+          />
+          <div className="rangeSummary standaloneRangeSummary">
+            <CalendarDays size={17} />
+            <strong>
+              {days} day{days === 1 ? "" : "s"}
+            </strong>
+            <small>
+              {days >= 5
+                ? "10% discount unlocked"
+                : `Advance limit: ${policy.maxAdvanceDays} days`}
+            </small>
+          </div>
+          {wednesdayDates.length > 0 && (
+            <div className="wednesdayNotice">
+              <Zap size={16} />
+              <div>
+                <b>
+                  Heads up —{" "}
+                  {wednesdayDates.length > 1
+                    ? "some of your dates fall"
+                    : "your date falls"}{" "}
+                  on a Wednesday.
+                </b>
+                <span>
+                  MSEB may cut power in Solapur for 2–3 hours on Wednesdays and
+                  Coworx Central isn't liable for those outages. As a thank-you
+                  for your patience we're applying a{" "}
+                  {ops.wednesdayDiscountPercent || 0}% discount automatically
+                  for {wednesdayDates.length > 1 ? "those days" : "that day"}.
+                </span>
+              </div>
+            </div>
+          )}
+          {holidayDates.length > 0 && (
+            <div className="wednesdayNotice holidayNotice">
+              <AlertCircle size={16} />
+              <div>
+                <b>Coworx Central is closed on {holidayDates.join(", ")}.</b>
+                <span>
+                  Please choose different dates — this range can't be booked.
+                </span>
+              </div>
+            </div>
+          )}
+          <div className="tabs">
+            {[
+              { value: "desk" as Space, label: "Desks" },
+              { value: "meeting" as Space, label: "Meeting Room" },
+              { value: "conference" as Space, label: "Conference Room" },
+              { value: "podcast" as Space, label: "Creator Studio" },
+            ].map((x) => (
+              <button
+                key={x.value}
+                className={
+                  p.space === x.value ||
+                  (x.value === "desk" && p.space === "cubicle")
+                    ? "active"
+                    : ""
+                }
+                onClick={() => {
+                  p.setSpace(x.value);
+                  p.setSelectedSeats([]);
+                }}
+              >
+                {x.label}
+              </button>
+            ))}
+          </div>
+          {isDesk ? (
+            <DeskFloor
+              selected={selected}
+              booked={bookedDesks}
+              prices={p.prices}
+              deskPrices={p.deskPrices || {}}
+              maintenance={blockedForDesk}
+              onToggle={(id) => {
+                if (bookedDesks.includes(`desk-${id}`) || blockedForDesk(id))
+                  return;
+                p.setSelectedSeats(
+                  selected.includes(id)
+                    ? selected.filter((x) => x !== id)
+                    : [...selected, id],
+                );
+              }}
+            />
+          ) : (
+            <RoomCard
+              p={p}
+              space={p.space}
+              start={start}
+              duration={duration}
+              available={roomAvailable}
+              locks={locks}
+            />
+          )}
+          <Extras
+            addons={addons}
+            qty={addonQty}
+            setQty={setAddonQty}
+            couponCode={couponCode}
+            setCouponCode={setCouponCode}
+            coupon={coupon}
+            referralCode={referralCode}
+            setReferralCode={setReferralCode}
+            reward={ops.referralRewardPercent}
+            referralEnabled={ops.referralEnabled}
+            amenities={amenities}
+            setAmenities={setAmenities}
+            notes={notes}
+            setNotes={setNotes}
+          />
+        </section>
+        <Summary
+          staffBooking={!!p.staffBooking}
+          canConfirm={p.canConfirm}
+          busy={submitting || inventoryLoading}
+          customerReady={
+            !p.staffBooking ||
+            Boolean(selectedCustomer?.uid && !selectedCustomer.blocked)
+          }
+          title={getTitle(p.space)}
+          date={p.date}
+          endDate={endDate}
+          days={days}
+          start={start}
+          end={end}
+          isDesk={isDesk}
+          selected={selected}
+          dailyBase={dailyBase}
+          baseTotal={baseTotal}
+          stayDiscount={stayDiscount}
+          bulkDiscount={bulkDiscount}
+          couponDiscount={couponDiscount}
+          coupon={coupon}
+          referralDiscount={referralDiscount}
+          offerDiscount={offerDiscount}
+          bestOffer={bestOffer?.o}
+          wednesdayDiscount={wednesdayDiscount}
+          addonTotal={addonTotal}
+          total={total}
+          withinAdvance={withinAdvance}
+          maintenance={blockedRange || holidayDates.length > 0}
+          roomBooked={startBusy}
+          valid={valid}
+          onBook={openModal}
+          message={message}
+          limit={policy.maxAdvanceDays}
+        />
+      </div>
+      {modal && (
+        <ProfileModal
+          title={getTitle(p.space)}
+          date={p.date}
+          endDate={endDate}
+          total={total}
+          profile={profile}
+          setProfile={setProfile}
+          onClose={() => setModal(false)}
+          onContinue={() => submit()}
+          busy={submitting}
+          message={message}
+        />
+      )}
+    </main>
+  );
 }
-function roomPrice(p:any){return p.space==="meeting"?Number(p.prices.meeting_hourly):p.space==="conference"?Number(p.prices.conference_hourly):Number(p.prices.podcast_hourly);}
-function getTitle(space:Space){return space==="meeting"?"Meeting Room":space==="conference"?"Conference Room":space==="podcast"?"Creator Studio":"Desk";}
-function DateRange({date,endDate,setDate,setEndDate,maxDate,days,limit}:any){return <div className="dateRangeBox"><label><span>START DATE</span><input type="date" min={localToday()} max={maxDate} value={date} onChange={e=>{setDate(e.target.value);if(endDate<e.target.value)setEndDate(e.target.value);}}/></label><div className="rangeArrow">→</div><label><span>END DATE</span><input type="date" min={date} max={maxDate} value={endDate} onChange={e=>setEndDate(e.target.value)}/></label><div className="rangeSummary"><CalendarDays size={17}/><strong>{days} day{days===1?"":"s"}</strong><small>{days>=5?"10% discount unlocked":`Advance limit: ${limit} days`}</small></div></div>;}
-function DeskFloor({selected,booked,prices,deskPrices,maintenance,onToggle}:any){return <><div className="workingHoursBanner"><Clock3/> <b>Open 9:00 AM–7:00 PM</b><span>22 desks · live availability · full-day booking</span></div><div className="panelHead"><div><h3>22-desk floor plan</h3><small>Available / Held / Booked. Premium desks have drawer + 🔐 lock marker.</small></div><b>₹{prices.desk_basic} regular · ₹{prices.desk_premium} premium</b></div><div className="deskBulkNote">{selected.length?`${selected.length} desk${selected.length===1?"":"s"} selected`:"Select desks"}{selected.length>5&&<span>10% bulk discount</span>}</div><div className="seatGrid redesignedDeskGrid floorPlanGrid">{FLOOR.map(id=>id?<DeskCard key={id} id={id} selected={selected.includes(id)} booked={booked.includes(`desk-${id}`)||booked.includes(`seat-${id}`)} maintained={maintenance(id)} price={deskPrices[id]??(MAP[id].premium?prices.desk_premium:prices.desk_basic)} onToggle={onToggle}/>:<div className="pillarGap" key="pillar"><span>PILLAR</span></div>)}</div><div className="floorLegend"><span><i className="legendDesk"/> Available</span><span><i className="legendHeld"/> Held</span><span><i className="legendBooked"/> Booked</span><span><i className="legendPremiumIcon"><KeyRound size={12}/></i> Premium</span><span><i className="legendPillar"/> Pillar / blank</span></div></>;}
-function DeskCard({id,selected,booked,maintained,price,onToggle}:any){const d=MAP[id];const premium=PREMIUM.has(d.number);return <button className={`seat deskCard ${booked?"booked":""} ${maintained?"maintenance":""} ${selected?"selected":""}`} disabled={booked||maintained} onClick={()=>onToggle(id)}><span className="deskIcons"><Monitor size={30}/>{premium&&<KeyRound className="premiumKeyIcon" size={22}/>}</span><strong>{d.number}</strong><b>₹{price}/day</b><small>{maintained?"MAINTENANCE":booked?"BOOKED":premium?"PREMIUM · DRAWER + LOCK":"AVAILABLE"}</small>{selected&&<span className="deskCheck"><CheckCircle2/></span>}</button>;}
-function RoomCard({p,space,start,duration,available,locks}:any){const starts:string[]=space==="meeting"?meetingStarts:space==="conference"?confStarts:podStarts;const title=getTitle(space);const price=roomPrice(p);const times=Array.from(new Set(locks.filter((x:any)=>x.inventoryId===space&&x.start&&activeLock(x)).map((x:any)=>`${x.start}–${x.end||addHours(x.start,1)}`))).sort();return <section className="timeRoom"><div className="roomVisual">{space==="meeting"?<div className="roomFallback"><Users/></div>:<img src={space==="conference"?conferenceImage:podcastImage} alt=""/>}<span>{space==="meeting"?"8 seats":space==="conference"?"18 seats":"Creator Studio"}</span></div><div className="roomDetails"><div className="roomHead"><div><span className="eyebrow">{space==="meeting"?"8 SEATS":space==="conference"?"18 SEATS":"CREATOR ROOM"}</span><h3>{title}</h3><p>{space==="meeting"?"₹600/hour · multiple hours · AC · Wi-Fi · power":space==="conference"?"₹500/hour · multiple hours · AC · Wi-Fi · power":"Hourly · lights · microphones · stands · camera not provided"}</p></div><strong>₹{price}/hour</strong></div><div className="workingHoursBanner"><Clock3/> <b>Open 9:00 AM–7:00 PM</b><span>Multi-hour booking enabled.</span></div><div className="roomControls"><label>Start<select value={start} onChange={e=>setStart(p,e.target.value)}>{starts.map(s=><option key={s} value={s} disabled={busy(locks,space,s)||s>=BUSINESS_END}>{s}{busy(locks,space,s)?" · BOOKED":""}</option>)}</select></label><label>Hours<select value={duration} onChange={e=>setDuration(p,Number(e.target.value))}>{Array.from({length:Math.max(1,available)},(_,i)=><option key={i+1} value={i+1}>{i+1} hour{i===0?"":"s"}</option>)}</select></label></div>{times.length>0&&<div className="bookedTimesBox"><strong>Already booked</strong><div>{times.map(t=><span key={t}>{t}</span>)}</div><small>Booking stops at the next occupied time or 7:00 PM.</small></div>}</div></section>;}
-function setStart(p:any,v:string){if(p.space==="meeting")p.setMeeting(v);else if(p.space==="conference")p.setConf(v);else p.setPod(v);}
-function setDuration(p:any,v:number){if(p.space==="meeting")p.setMeetingDuration(v);else if(p.space==="conference")p.setConfDuration(v);else p.setPodDuration(v);}
-function Extras({addons,qty,setQty,couponCode,setCouponCode,coupon,referralCode,setReferralCode,referralEnabled,reward,amenities,setAmenities,notes,setNotes}:any){return <section className="bookingExtras panel"><div className="extrasHead"><div><span className="eyebrow">EXTRAS</span><h3>Optional booking extras</h3></div><Plus/></div><div className="extrasGrid"><label>Coupon code<input value={couponCode} onChange={e=>setCouponCode(e.target.value.toUpperCase())} placeholder="WELCOME10"/>{coupon&&<small className="goodText">{coupon.value}{coupon.type==="percent"?"%":"₹"} discount ready</small>}</label><label>Referral code<input value={referralCode} onChange={e=>setReferralCode(e.target.value.toUpperCase())} placeholder="Optional"/><small>{referralEnabled?`${reward||0}% referral reward enabled`:"Referral program disabled"}</small></label></div><div className="addonGrid">{addons.filter(a=>a.active).map(a=><label className="addonRow" key={a.id}><span><b>{a.name}</b><small>₹{a.unitPrice} each</small></span><input type="number" min="0" max="20" value={qty[a.id]||0} onChange={e=>setQty({...qty,[a.id]:Number(e.target.value)})}/></label>)}</div><div className="amenityChips">{["Projector","Whiteboard","Coffee / Tea","Printing","Locker"].map(a=><button key={a} type="button" className={amenities.includes(a)?"active":""} onClick={()=>setAmenities(amenities.includes(a)?amenities.filter((x:string)=>x!==a):[...amenities,a])}>{amenities.includes(a)?"✓ ":""}{a}</button>)}</div><label className="notesField">Booking note<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Setup or special request"/></label></section>;}
-function Summary({staffBooking,title,date,endDate,days,start,end,isDesk,selected,dailyBase,baseTotal,stayDiscount,bulkDiscount,couponDiscount,coupon,referralDiscount,offerDiscount,bestOffer,wednesdayDiscount,addonTotal,total,withinAdvance,maintenance,roomBooked,valid,onBook,message,limit}:any){
- const msgRef=useRef<HTMLDivElement>(null);
- useEffect(()=>{if(message)msgRef.current?.scrollIntoView({behavior:"smooth",block:"nearest"})},[message]);
- return <aside className="summary panel"><span className="eyebrow">BOOKING SUMMARY</span><h3>{selected.length?`${selected.length} Desk${selected.length===1?"":"s"} Selected`:title}</h3><p><CalendarDays/> {date}{endDate!==date?` → ${endDate}`:""}</p>{!isDesk&&<p><Clock3/> {start}–{end}</p>}{isDesk&&selected.length>0&&<p><Monitor/> {selected.join(", ")}</p>}<p><Clock3/> Business hours: 9:00 AM–7:00 PM</p>{!withinAdvance&&<Info text={`Max advance booking is ${limit} days.`} danger/>}{maintenance&&<Info text="One or more selected desks are under maintenance for at least one date in your range. Remove them or adjust your dates." danger/>}{!isDesk&&roomBooked&&<Info text={`${start} is already booked.`} danger/>}{message&&<div ref={msgRef}><Info text={message} danger={!message.startsWith("Request")&&!message.startsWith("Booking")&&!message.startsWith("Customer saved")}/></div>}<hr/><Money label="Base / day" value={dailyBase}/><Money label={`${days} day${days===1?"":"s"}`} value={baseTotal}/>{stayDiscount>0&&<Money label="5+ day discount" value={-stayDiscount} good/>}{bulkDiscount>0&&<Money label="6+ desk bulk discount" value={-bulkDiscount} good/>}{offerDiscount>0&&<Money label={bestOffer?.title||"Duration offer"} value={-offerDiscount} good/>}{wednesdayDiscount>0&&<Money label="Wednesday power-notice discount" value={-wednesdayDiscount} good/>}{couponDiscount>0&&<Money label={`Coupon ${coupon?.code||""}`} value={-couponDiscount} good/>}{referralDiscount>0&&<Money label="Referral reward" value={-referralDiscount} good/>}{addonTotal>0&&<Money label="Add-ons" value={addonTotal}/>}<div className="money total"><span>Total</span><strong>₹{total}</strong></div>{days>=5?<div className="multiDayPromo"><Percent/><div><strong>10% multi-day discount applied</strong><small>Valid for 5 or more days.</small></div></div>:null}<div className="securityNote"><Lock/><span>{staffBooking?"Staff bookings are confirmed immediately and do not require WhatsApp payment.":"Online requests reserve the selected resource for 15 minutes while payment is completed."}</span></div><button className="primary bookCta" disabled={!withinAdvance||!valid} onClick={onBook}>{staffBooking?<><CheckCircle2/> Confirm booking</>:<><MessageCircle/> Request on WhatsApp</>}</button></aside>;}
-function Money({label,value,good=false}:any){return <div className={`money ${good?"good":""}`}><span>{label}</span><b>{value<0?"−":""}₹{Math.abs(value).toLocaleString("en-IN")}</b></div>}
-function Info({text,danger=false}:any){return <div className={danger?"warningBox":"successBox"}><AlertCircle/><span>{text}</span></div>}
-function ProfileModal({title,date,endDate,total,profile,setProfile,onClose,onContinue,message}:any){
-  const professions=["IT Professional","Developer","Tester","Marketing Team","Student","Designer","Consultant","Business","Other"];
-  return <div className="modalBackdrop"><div className="profileModal modernProfileModal"><div className="profileModalHead"><div><span className="eyebrow">FINAL CHECK</span><h3>Customer details</h3><p>Google name is used automatically. Add your contact and professional details before submitting.</p></div><button className="ghost small" onClick={onClose}>Close</button></div><div className="profileSummary"><span>{title}</span><b>{date}{endDate!==date?` → ${endDate}`:""}</b><strong>₹{total}</strong></div><div className="profileForm modernProfileForm"><label className="full"><span>Mobile number <em>*</em></span><input type="tel" inputMode="tel" autoComplete="tel" placeholder="+91 98765 43210" value={profile.mobile||""} onChange={e=>setProfile({...profile,mobile:e.target.value})}/><small>Used for booking contact and WhatsApp.</small></label><label><span>Gender</span><select value={profile.gender||""} onChange={e=>setProfile({...profile,gender:e.target.value})}><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option><option>Prefer not to say</option></select></label><label><span>Date of birth</span><input type="date" value={profile.dob||""} onChange={e=>setProfile({...profile,dob:e.target.value})}/></label><label><span>Profession</span><select value={profile.profession||""} onChange={e=>setProfile({...profile,profession:e.target.value})}><option value="">Select profession</option>{professions.map(x=><option key={x}>{x}</option>)}</select></label>{profile.profession==="Other"&&<label className="full"><span>Tell us your profession <em>*</em></span><input value={profile.otherProfession||""} onChange={e=>setProfile({...profile,otherProfession:e.target.value})} placeholder="e.g. Architect, HR, Photographer"/></label>}</div>{message&&<div className="modalError">{message}</div>}<div className="modalFooter"><small>We use these details only to manage your Coworx Central booking.</small><button className="primary modernContinue" onClick={onContinue}>Continue to WhatsApp <MessageCircle size={17}/></button></div></div></div>
+function roomPrice(p: any) {
+  return p.space === "meeting"
+    ? Number(p.prices.meeting_hourly)
+    : p.space === "conference"
+      ? Number(p.prices.conference_hourly)
+      : Number(p.prices.podcast_hourly);
+}
+function getTitle(space: Space) {
+  return space === "meeting"
+    ? "Meeting Room"
+    : space === "conference"
+      ? "Conference Room"
+      : space === "podcast"
+        ? "Creator Studio"
+        : "Desk";
+}
+function DateRange({
+  date,
+  endDate,
+  setDate,
+  setEndDate,
+  maxDate,
+  days,
+  limit,
+}: any) {
+  return (
+    <div className="dateRangeBox">
+      <label>
+        <span>START DATE</span>
+        <input
+          type="date"
+          min={localToday()}
+          max={maxDate}
+          value={date}
+          onChange={(e) => {
+            setDate(e.target.value);
+            if (endDate < e.target.value) setEndDate(e.target.value);
+          }}
+        />
+      </label>
+      <div className="rangeArrow">→</div>
+      <label>
+        <span>END DATE</span>
+        <input
+          type="date"
+          min={date}
+          max={maxDate}
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+        />
+      </label>
+      <div className="rangeSummary">
+        <CalendarDays size={17} />
+        <strong>
+          {days} day{days === 1 ? "" : "s"}
+        </strong>
+        <small>
+          {days >= 5 ? "10% discount unlocked" : `Advance limit: ${limit} days`}
+        </small>
+      </div>
+    </div>
+  );
+}
+function DeskFloor({
+  selected,
+  booked,
+  prices,
+  deskPrices,
+  maintenance,
+  onToggle,
+}: any) {
+  return (
+    <>
+      <div className="workingHoursBanner">
+        <Clock3 /> <b>Open 9:00 AM–7:00 PM</b>
+        <span>22 desks · live availability · full-day booking</span>
+      </div>
+      <div className="panelHead">
+        <div>
+          <h3>22-desk floor plan</h3>
+          <small>
+            Available / Held / Booked. Premium desks have drawer + 🔐 lock
+            marker.
+          </small>
+        </div>
+        <b>
+          ₹{prices.desk_basic} regular · ₹{prices.desk_premium} premium
+        </b>
+      </div>
+      <div className="deskBulkNote">
+        {selected.length
+          ? `${selected.length} desk${selected.length === 1 ? "" : "s"} selected`
+          : "Select desks"}
+        {selected.length > 5 && <span>10% bulk discount</span>}
+      </div>
+      <div className="seatGrid redesignedDeskGrid floorPlanGrid">
+        {FLOOR.map((id) =>
+          id ? (
+            <DeskCard
+              key={id}
+              id={id}
+              selected={selected.includes(id)}
+              booked={
+                booked.includes(`desk-${id}`) || booked.includes(`seat-${id}`)
+              }
+              maintained={maintenance(id)}
+              price={
+                deskPrices[id] ??
+                (MAP[id].premium ? prices.desk_premium : prices.desk_basic)
+              }
+              onToggle={onToggle}
+            />
+          ) : (
+            <div className="pillarGap" key="pillar">
+              <span>PILLAR</span>
+            </div>
+          ),
+        )}
+      </div>
+      <div className="floorLegend">
+        <span>
+          <i className="legendDesk" /> Available
+        </span>
+        <span>
+          <i className="legendHeld" /> Held
+        </span>
+        <span>
+          <i className="legendBooked" /> Booked
+        </span>
+        <span>
+          <i className="legendPremiumIcon">
+            <KeyRound size={12} />
+          </i>{" "}
+          Premium
+        </span>
+        <span>
+          <i className="legendPillar" /> Pillar / blank
+        </span>
+      </div>
+    </>
+  );
+}
+function DeskCard({ id, selected, booked, maintained, price, onToggle }: any) {
+  const d = MAP[id];
+  const premium = PREMIUM.has(d.number);
+  return (
+    <button
+      className={`seat deskCard ${booked ? "booked" : ""} ${maintained ? "maintenance" : ""} ${selected ? "selected" : ""}`}
+      disabled={booked || maintained}
+      onClick={() => onToggle(id)}
+    >
+      <span className="deskIcons">
+        <Monitor size={30} />
+        {premium && <KeyRound className="premiumKeyIcon" size={22} />}
+      </span>
+      <strong>{d.number}</strong>
+      <b>₹{price}/day</b>
+      <small>
+        {maintained
+          ? "MAINTENANCE"
+          : booked
+            ? "BOOKED"
+            : premium
+              ? "PREMIUM · DRAWER + LOCK"
+              : "AVAILABLE"}
+      </small>
+      {selected && (
+        <span className="deskCheck">
+          <CheckCircle2 />
+        </span>
+      )}
+    </button>
+  );
+}
+function RoomCard({ p, space, start, duration, available, locks }: any) {
+  const starts: string[] =
+    space === "meeting"
+      ? meetingStarts
+      : space === "conference"
+        ? confStarts
+        : podStarts;
+  const title = getTitle(space);
+  const price = roomPrice(p);
+  const times = Array.from(
+    new Set(
+      locks
+        .filter((x: any) => x.inventoryId === space && x.start && activeLock(x))
+        .map((x: any) => `${x.start}–${x.end || addHours(x.start, 1)}`),
+    ),
+  ).sort();
+  return (
+    <section className="timeRoom">
+      <div className="roomVisual">
+        {space === "meeting" ? (
+          <div className="roomFallback">
+            <Users />
+          </div>
+        ) : (
+          <img
+            src={space === "conference" ? conferenceImage : podcastImage}
+            alt=""
+          />
+        )}
+        <span>
+          {space === "meeting"
+            ? "8 seats"
+            : space === "conference"
+              ? "18 seats"
+              : "Creator Studio"}
+        </span>
+      </div>
+      <div className="roomDetails">
+        <div className="roomHead">
+          <div>
+            <span className="eyebrow">
+              {space === "meeting"
+                ? "8 SEATS"
+                : space === "conference"
+                  ? "18 SEATS"
+                  : "CREATOR ROOM"}
+            </span>
+            <h3>{title}</h3>
+            <p>
+              {space === "meeting"
+                ? "Multiple hours · AC · Wi-Fi · power"
+                : space === "conference"
+                  ? "Multiple hours · AC · Wi-Fi · power"
+                  : "Hourly · lights · microphones · stands · camera not provided"}
+            </p>
+          </div>
+          <strong>₹{price}/hour</strong>
+        </div>
+        <div className="workingHoursBanner">
+          <Clock3 /> <b>Open 9:00 AM–7:00 PM</b>
+          <span>Multi-hour booking enabled.</span>
+        </div>
+        <div className="roomControls">
+          <label>
+            Start
+            <select value={start} onChange={(e) => setStart(p, e.target.value)}>
+              {starts.map((s) => (
+                <option
+                  key={s}
+                  value={s}
+                  disabled={busy(locks, space, s) || s >= BUSINESS_END}
+                >
+                  {s}
+                  {busy(locks, space, s) ? " · BOOKED" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Hours
+            <select
+              value={duration}
+              onChange={(e) => setDuration(p, Number(e.target.value))}
+            >
+              {Array.from({ length: Math.max(1, available) }, (_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {i + 1} hour{i === 0 ? "" : "s"}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {times.length > 0 && (
+          <div className="bookedTimesBox">
+            <strong>Already booked</strong>
+            <div>
+              {times.map((t) => (
+                <span key={t}>{t}</span>
+              ))}
+            </div>
+            <small>Booking stops at the next occupied time or 7:00 PM.</small>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+function setStart(p: any, v: string) {
+  if (p.space === "meeting") p.setMeeting(v);
+  else if (p.space === "conference") p.setConf(v);
+  else p.setPod(v);
+}
+function setDuration(p: any, v: number) {
+  if (p.space === "meeting") p.setMeetingDuration(v);
+  else if (p.space === "conference") p.setConfDuration(v);
+  else p.setPodDuration(v);
+}
+function Extras({
+  addons,
+  qty,
+  setQty,
+  couponCode,
+  setCouponCode,
+  coupon,
+  referralCode,
+  setReferralCode,
+  referralEnabled,
+  reward,
+  amenities,
+  setAmenities,
+  notes,
+  setNotes,
+}: any) {
+  return (
+    <section className="bookingExtras panel">
+      <div className="extrasHead">
+        <div>
+          <span className="eyebrow">EXTRAS</span>
+          <h3>Optional booking extras</h3>
+        </div>
+        <Plus />
+      </div>
+      <div className="extrasGrid">
+        <label>
+          Coupon code
+          <input
+            value={couponCode}
+            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+            placeholder="WELCOME10"
+          />
+          {coupon && (
+            <small className="goodText">
+              {coupon.value}
+              {coupon.type === "percent" ? "%" : "₹"} discount ready
+            </small>
+          )}
+        </label>
+        <label>
+          Referral code
+          <input
+            value={referralCode}
+            onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+            placeholder="Optional"
+          />
+          <small>
+            {referralEnabled
+              ? `${reward || 0}% referral reward enabled`
+              : "Referral program disabled"}
+          </small>
+        </label>
+      </div>
+      <div className="addonGrid">
+        {addons
+          .filter((a) => a.active)
+          .map((a) => (
+            <label className="addonRow" key={a.id}>
+              <span>
+                <b>{a.name}</b>
+                <small>₹{a.unitPrice} each</small>
+              </span>
+              <input
+                type="number"
+                min="0"
+                max="20"
+                value={qty[a.id] || 0}
+                onChange={(e) =>
+                  setQty({ ...qty, [a.id]: Number(e.target.value) })
+                }
+              />
+            </label>
+          ))}
+      </div>
+      <div className="amenityChips">
+        {["Projector", "Whiteboard", "Coffee / Tea", "Printing", "Locker"].map(
+          (a) => (
+            <button
+              key={a}
+              type="button"
+              className={amenities.includes(a) ? "active" : ""}
+              onClick={() =>
+                setAmenities(
+                  amenities.includes(a)
+                    ? amenities.filter((x: string) => x !== a)
+                    : [...amenities, a],
+                )
+              }
+            >
+              {amenities.includes(a) ? "✓ " : ""}
+              {a}
+            </button>
+          ),
+        )}
+      </div>
+      <label className="notesField">
+        Booking note
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Setup or special request"
+        />
+      </label>
+    </section>
+  );
+}
+function Summary({
+  staffBooking,
+  canConfirm,
+  customerReady = true,
+  busy = false,
+  title,
+  date,
+  endDate,
+  days,
+  start,
+  end,
+  isDesk,
+  selected,
+  dailyBase,
+  baseTotal,
+  stayDiscount,
+  bulkDiscount,
+  couponDiscount,
+  coupon,
+  referralDiscount,
+  offerDiscount,
+  bestOffer,
+  wednesdayDiscount,
+  addonTotal,
+  total,
+  withinAdvance,
+  maintenance,
+  roomBooked,
+  valid,
+  onBook,
+  message,
+  limit,
+}: any) {
+  const msgRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (message)
+      msgRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [message]);
+  return (
+    <aside className="summary panel">
+      <span className="eyebrow">BOOKING SUMMARY</span>
+      <h3>
+        {selected.length
+          ? `${selected.length} Desk${selected.length === 1 ? "" : "s"} Selected`
+          : title}
+      </h3>
+      <p>
+        <CalendarDays /> {date}
+        {endDate !== date ? ` → ${endDate}` : ""}
+      </p>
+      {!isDesk && (
+        <p>
+          <Clock3 /> {start}–{end}
+        </p>
+      )}
+      {isDesk && selected.length > 0 && (
+        <p>
+          <Monitor /> {selected.join(", ")}
+        </p>
+      )}
+      <p>
+        <Clock3 /> Business hours: 9:00 AM–7:00 PM
+      </p>
+      {!withinAdvance && (
+        <Info text={`Max advance booking is ${limit} days.`} danger />
+      )}
+      {maintenance && (
+        <Info
+          text="One or more selected desks are under maintenance for at least one date in your range. Remove them or adjust your dates."
+          danger
+        />
+      )}
+      {!isDesk && roomBooked && (
+        <Info text={`${start} is already booked.`} danger />
+      )}
+      {message && (
+        <div ref={msgRef}>
+          <Info
+            text={message}
+            danger={
+              !message.startsWith("Request") &&
+              !message.startsWith("Booking") &&
+              !message.startsWith("Customer saved")
+            }
+          />
+        </div>
+      )}
+      <hr />
+      <Money label="Base / day" value={dailyBase} />
+      <Money label={`${days} day${days === 1 ? "" : "s"}`} value={baseTotal} />
+      {stayDiscount > 0 && (
+        <Money label="5+ day discount" value={-stayDiscount} good />
+      )}
+      {bulkDiscount > 0 && (
+        <Money label="6+ desk bulk discount" value={-bulkDiscount} good />
+      )}
+      {offerDiscount > 0 && (
+        <Money
+          label={bestOffer?.title || "Duration offer"}
+          value={-offerDiscount}
+          good
+        />
+      )}
+      {wednesdayDiscount > 0 && (
+        <Money
+          label="Wednesday power-notice discount"
+          value={-wednesdayDiscount}
+          good
+        />
+      )}
+      {couponDiscount > 0 && (
+        <Money
+          label={`Coupon ${coupon?.code || ""}`}
+          value={-couponDiscount}
+          good
+        />
+      )}
+      {referralDiscount > 0 && (
+        <Money label="Referral reward" value={-referralDiscount} good />
+      )}
+      {addonTotal > 0 && <Money label="Add-ons" value={addonTotal} />}
+      <div className="money total">
+        <span>Total</span>
+        <strong>₹{total}</strong>
+      </div>
+      {days >= 5 ? (
+        <div className="multiDayPromo">
+          <Percent />
+          <div>
+            <strong>10% multi-day discount applied</strong>
+            <small>Valid for 5 or more days.</small>
+          </div>
+        </div>
+      ) : null}
+      <div className="securityNote">
+        <Lock />
+        <span>
+          {staffBooking
+            ? "Save a customer first. Payment is recorded separately by authorized staff."
+            : "Online requests reserve the selected resource for 15 minutes while payment is completed."}
+        </span>
+      </div>
+      <button
+        className="primary bookCta"
+        disabled={
+          !withinAdvance || !valid || maintenance || busy || !customerReady
+        }
+        onClick={onBook}
+      >
+        {busy ? (
+          "Please wait…"
+        ) : staffBooking ? (
+          <>
+            <CheckCircle2 />{" "}
+            {canConfirm ? "Confirm booking" : "Create booking request"}
+          </>
+        ) : (
+          <>
+            <MessageCircle /> Request on WhatsApp
+          </>
+        )}
+      </button>
+    </aside>
+  );
+}
+function Money({ label, value, good = false }: any) {
+  return (
+    <div className={`money ${good ? "good" : ""}`}>
+      <span>{label}</span>
+      <b>
+        {value < 0 ? "−" : ""}₹{Math.abs(value).toLocaleString("en-IN")}
+      </b>
+    </div>
+  );
+}
+function Info({ text, danger = false }: any) {
+  return (
+    <div className={danger ? "warningBox" : "successBox"}>
+      <AlertCircle />
+      <span>{text}</span>
+    </div>
+  );
+}
+function ProfileModal({
+  busy = false,
+  title,
+  date,
+  endDate,
+  total,
+  profile,
+  setProfile,
+  onClose,
+  onContinue,
+  message,
+}: any) {
+  const professions = [
+    "IT Professional",
+    "Developer",
+    "Tester",
+    "Marketing Team",
+    "Student",
+    "Designer",
+    "Consultant",
+    "Business",
+    "Other",
+  ];
+  return (
+    <div className="modalBackdrop">
+      <div className="profileModal modernProfileModal">
+        <div className="profileModalHead">
+          <div>
+            <span className="eyebrow">FINAL CHECK</span>
+            <h3>Customer details</h3>
+            <p>
+              Google name is used automatically. Add your contact and
+              professional details before submitting.
+            </p>
+          </div>
+          <button className="ghost small" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div className="profileSummary">
+          <span>{title}</span>
+          <b>
+            {date}
+            {endDate !== date ? ` → ${endDate}` : ""}
+          </b>
+          <strong>₹{total}</strong>
+        </div>
+        <div className="profileForm modernProfileForm">
+          <label className="full">
+            <span>
+              Mobile number <em>*</em>
+            </span>
+            <input
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="+91 98765 43210"
+              value={profile.mobile || ""}
+              onChange={(e) =>
+                setProfile({ ...profile, mobile: e.target.value })
+              }
+            />
+            <small>Used for booking contact and WhatsApp.</small>
+          </label>
+          <label>
+            <span>Gender</span>
+            <select
+              value={profile.gender || ""}
+              onChange={(e) =>
+                setProfile({ ...profile, gender: e.target.value })
+              }
+            >
+              <option value="">Select</option>
+              <option>Male</option>
+              <option>Female</option>
+              <option>Other</option>
+              <option>Prefer not to say</option>
+            </select>
+          </label>
+          <label>
+            <span>Date of birth</span>
+            <input
+              type="date"
+              value={profile.dob || ""}
+              onChange={(e) => setProfile({ ...profile, dob: e.target.value })}
+            />
+          </label>
+          <label>
+            <span>Profession</span>
+            <select
+              value={profile.profession || ""}
+              onChange={(e) =>
+                setProfile({ ...profile, profession: e.target.value })
+              }
+            >
+              <option value="">Select profession</option>
+              {professions.map((x) => (
+                <option key={x}>{x}</option>
+              ))}
+            </select>
+          </label>
+          {profile.profession === "Other" && (
+            <label className="full">
+              <span>
+                Tell us your profession <em>*</em>
+              </span>
+              <input
+                value={profile.otherProfession || ""}
+                onChange={(e) =>
+                  setProfile({ ...profile, otherProfession: e.target.value })
+                }
+                placeholder="e.g. Architect, HR, Photographer"
+              />
+            </label>
+          )}
+        </div>
+        {message && <div className="modalError">{message}</div>}
+        <div className="modalFooter">
+          <small>
+            We use these details only to manage your Coworx Central booking.
+          </small>
+          <button
+            className="primary modernContinue"
+            disabled={busy}
+            onClick={onContinue}
+          >
+            {busy ? "Creating booking…" : "Continue to WhatsApp"}{" "}
+            <MessageCircle size={17} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
