@@ -45,6 +45,21 @@ export async function loadWifi(){const s=await getDoc(doc(db,"settings","wifi"))
 export async function saveWifi(data:any){await setDoc(doc(db,"settings","wifi"),data,{merge:true});}
 export async function loadUpi(){const s=await getDoc(doc(db,"settings","upi"));return s.exists()?s.data():{upiId:"",merchantName:"Coworx Central"};}
 export async function saveUpi(data:any){await setDoc(doc(db,"settings","upi"),data,{merge:true});}
+export async function loadCompanySettings(){const s=await getDoc(doc(db,"settings","company"));return s.exists()?{name:"Coworx Central",address:"Solapur City, Maharashtra",gstNumber:"",gstRate:18,invoicePrefix:"CC",phone:"",email:"",...s.data()}:{name:"Coworx Central",address:"Solapur City, Maharashtra",gstNumber:"",gstRate:18,invoicePrefix:"CC",phone:"",email:""};}
+export async function saveCompanySettings(data:any){await setDoc(doc(db,"settings","company"),clean(data),{merge:true});}
+export function watchHolidays(cb:(items:any[])=>void,onError?:(e:any)=>void){return onSnapshot(query(collection(db,"holidays"),limit(365)),s=>cb(s.docs.map(d=>({id:d.id,...d.data()})).filter((h:any)=>h.active!==false).sort((a:any,b:any)=>String(a.date).localeCompare(b.date))),e=>onError?.(e));}
+export async function setHoliday(date:string,reason:string,uid:string){await setDoc(doc(db,"holidays",date),{date,reason,active:true,createdBy:uid,createdAt:serverTimestamp()},{merge:true});}
+export async function removeHoliday(date:string,uid:string){await updateDoc(doc(db,"holidays",date),{active:false,updatedBy:uid,updatedAt:serverTimestamp()});}
+export function watchBanners(cb:(items:any[])=>void,onError?:(e:any)=>void){return onSnapshot(query(collection(db,"banners"),limit(50)),s=>cb(s.docs.map(d=>({id:d.id,...d.data()})).sort(sortNewest)),e=>onError?.(e));}
+export async function createBanner(data:any,uid:string){await addDoc(collection(db,"banners"),clean({...data,active:data.active!==false,createdBy:uid,createdAt:serverTimestamp()}));}
+export async function updateBanner(id:string,data:any,uid:string){await updateDoc(doc(db,"banners",id),clean({...data,updatedBy:uid,updatedAt:serverTimestamp()}));}
+export async function deleteBanner(id:string,uid:string){await updateDoc(doc(db,"banners",id),{active:false,updatedBy:uid,updatedAt:serverTimestamp()});}
+export function watchEnquiries(cb:(items:any[])=>void,onError?:(e:any)=>void){return onSnapshot(query(collection(db,"enquiries"),limit(300)),s=>cb(s.docs.map(d=>({id:d.id,...d.data()})).sort(sortNewest)),e=>onError?.(e));}
+export async function createEnquiry(data:any,uid:string){await addDoc(collection(db,"enquiries"),clean({...data,status:data.status||"New",source:data.source||"Staff",createdBy:uid,createdAt:serverTimestamp()}));}
+export async function updateEnquiry(id:string,data:any,uid:string){await updateDoc(doc(db,"enquiries",id),clean({...data,updatedBy:uid,updatedAt:serverTimestamp()}));}
+export function watchPricingRules(cb:(items:any[])=>void,onError?:(e:any)=>void){return onSnapshot(query(collection(db,"pricingRules"),limit(200)),s=>cb(s.docs.map(d=>({id:d.id,...d.data()})).filter((r:any)=>r.active!==false).sort(sortNewest)),e=>onError?.(e));}
+export async function savePricingRule(data:any,uid:string){await addDoc(collection(db,"pricingRules"),clean({...data,createdBy:uid,active:true,createdAt:serverTimestamp()}));}
+export async function deletePricingRule(id:string,uid:string){await updateDoc(doc(db,"pricingRules",id),{active:false,updatedBy:uid,updatedAt:serverTimestamp()});}
 export async function loadPolicy(){const s=await getDoc(doc(db,"settings","policy"));return s.exists()?{maxAdvanceDays:60,businessStart:"09:00",businessEnd:"19:00",...s.data()}:{maxAdvanceDays:60,businessStart:"09:00",businessEnd:"19:00"};}
 export async function savePolicy(data:any){await setDoc(doc(db,"settings","policy"),data,{merge:true});}
 export async function loadOperationsSettings(){const s=await getDoc(doc(db,"settings","operations"));return s.exists()?s.data():{referralEnabled:true,referralRewardPercent:5,weekendMultiplier:1,peakMultiplier:1,notificationTemplates:{bookingConfirmation:"",paymentReminder:"",cancellation:"",checkIn:""}};}
