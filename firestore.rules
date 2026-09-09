@@ -17,7 +17,6 @@ service cloud.firestore {
       );
     }
     function isSelf(uid){ return signedIn() && request.auth.uid == uid; }
-    function sameUserEmail(data){ return signedIn() && data.email != null && data.email.lower() == userEmail(); }
     function safeUserUpdate(){
       return request.resource.data.uid == resource.data.uid &&
         request.resource.data.email == resource.data.email &&
@@ -26,7 +25,8 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isSelf(uid) || isManager();
-      allow create: if isSelf(uid);
+      // Admin/Manager may create a staff-created customer profile; normal sign-in may create its own profile.
+      allow create: if isAdmin() || isManager() || isSelf(uid);
       allow update: if isAdmin() || isSelf(uid) && safeUserUpdate() || isManager() && safeUserUpdate();
       allow delete: if isAdmin();
       match /bookings/{bookingId} {
@@ -39,7 +39,6 @@ service cloud.firestore {
     match /roleAssignments/{id} {
       allow read: if isAdmin() || (signedIn() && id == userEmail());
       allow create, delete: if isAdmin();
-      // allow update if admin OR the owner of this roleAssignment is editing but cannot change email/role fields
       allow update: if isAdmin() || (signedIn() && id == userEmail() && request.resource.data.email == resource.data.email && request.resource.data.role == resource.data.role);
     }
 
@@ -50,10 +49,8 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Settings collection: most keys are admin-only for writes. Managers may be allowed to update certain operational settings (banners, operations, company) below.
     match /settings/{id} {
-      allow read: if signedIn() && id in ["pricing","deskPricing","upi","policy","operations","notificationTemplates","permissions","shifts","admins"];
-      // allow write for admins; allow managers to write a small set of operational settings (operations, banners, company)
+      allow read: if signedIn() && id in ["pricing","deskPricing","upi","policy","operations","notificationTemplates","permissions","shifts","admins","company"];
       allow write: if isAdmin() || (isManager() && id in ["operations", "banners", "company"]);
     }
     match /settings/wifi {
@@ -118,17 +115,32 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || isManager() || (signedIn() && resource.data.userId == request.auth.uid);
     }
 
-    // Explicit matches for banners and notices collections to allow manager-level creation
+    // Admin/Manager notice management. Customer reads remain authenticated.
     match /banners/{bannerId} {
       allow read: if signedIn();
-      allow create: if isAdmin() || isManager();
-      allow update, delete: if isAdmin();
+      allow create, update: if isAdmin() || isManager();
+      allow delete: if isAdmin() || isManager();
     }
-
     match /notices/{noticeId} {
       allow read: if signedIn();
-      allow create: if isAdmin() || isManager();
-      allow update, delete: if isAdmin();
+      allow create, update: if isAdmin() || isManager();
+      allow delete: if isAdmin() || isManager();
+    }
+
+    match /enquiries/{id} {
+      allow read: if isAdmin() || isManager();
+      allow create, update: if isAdmin() || isManager();
+      allow delete: if isAdmin();
+    }
+    match /pricingRules/{id} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    match /holidays/{id} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
     }
   }
 }
