@@ -166,7 +166,7 @@ export function downloadInvoice(b: Booking, company: any) {
   doc.setFontSize(9);
   doc.setTextColor(140);
   doc.text(
-    "Working hours: 9:00 AM - 7:00 PM. Thank you for choosing " +
+    `Booked session: ${b.sessions?.[b.date]?.start||b.start||"opening"} - ${b.sessions?.[b.date]?.end||b.end||"closing"}. Thank you for choosing ` +
       (company?.name || "Coworx Central") +
       ".",
     margin,

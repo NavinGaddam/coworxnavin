@@ -64,8 +64,8 @@ service cloud.firestore {
     }
     match /banners/{id} { allow read: if true; allow write: if can('noticesManage'); }
     match /notices/{id} { allow read: if true; allow write: if can('noticesManage'); }
-    match /offers/{id} { allow read: if signedIn(); allow write: if can('catalogManage'); }
-    match /coupons/{id} { allow read: if signedIn(); allow write: if can('catalogManage'); }
+    match /offers/{id} { allow read: if can('catalogManage') || signedIn() && resource.data.get('visibleToUsers',false) == true && (resource.data.targetType == 'all' || resource.data.get('targetEmail','').lower() == email()); allow write: if can('catalogManage'); }
+    match /coupons/{id} { allow read: if verified() && role() != 'User' || signedIn() && resource.data.get('visibleToUsers',false) == true; allow write: if can('catalogManage'); }
     match /membershipPlans/{id} { allow read: if signedIn(); allow write: if can('catalogManage'); }
     match /addons/{id} { allow read: if signedIn(); allow write: if can('catalogManage'); }
     match /inventory/{id} { allow read: if signedIn(); allow write: if can('resourcesManage'); }
@@ -111,7 +111,19 @@ service cloud.firestore {
     }
     function validPayment(id) {
       let b=resource.data;let n=request.resource.data;let p=getAfter(/databases/$(database)/documents/payments/$(n.lastPaymentId)).data;
-      return changedOnly(['status','staffDiscount','total','confirmedBy','confirmedAt','expiresAt','paymentReceived','paymentMethod','paymentRef','paymentStatus','invoiceNumber','lastPaymentId']) && can('paymentsCollect') && active(b) && n.status == 'Confirmed' && n.expiresAt == null && n.paymentReceived >= b.get('paymentReceived',0) && n.paymentReceived <= n.total && n.total == b.total+b.get('staffDiscount',0)-n.staffDiscount && n.total >= 0 && n.staffDiscount >= 0 && (n.staffDiscount == b.get('staffDiscount',0) || b.status == 'Pending' && can('bookingsDiscount')) && (b.get('passDays',0) > 0 ? n.paymentReceived >= b.minimumAdvance || n.paymentReceived == n.total : n.paymentReceived == n.total) && n.paymentStatus == (n.paymentReceived == n.total ? 'Paid' : 'Partially Paid') && n.confirmedBy == request.auth.uid && n.confirmedAt == request.time && p.bookingId == id && p.kind == 'Collection' && p.amount == n.paymentReceived-b.get('paymentReceived',0) && p.createdAt == request.time;
+      return changedOnly(['status','staffDiscount','total','confirmedBy','confirmedAt','expiresAt','paymentReceived','paymentMethod','paymentRef','paymentStatus','invoiceNumber','lastPaymentId']) && can('paymentsCollect') && active(b) && n.status == 'Confirmed' && n.expiresAt == null && n.paymentReceived >= b.get('paymentReceived',0) && n.paymentReceived <= n.total && n.total == b.total+b.get('staffDiscount',0)-n.staffDiscount && n.total >= 0 && n.staffDiscount >= 0 && (n.staffDiscount == b.get('staffDiscount',0) || b.status == 'Pending' && can('bookingsDiscount')) && (b.get('passDays',0) > 0 ? n.paymentReceived >= b.minimumAdvance || n.paymentReceived == n.total : n.paymentReceived == n.total) && n.paymentStatus == (n.paymentReceived == n.total ? 'Paid' : 'Partially Paid') && n.confirmedBy == request.auth.uid && n.confirmedAt == request.time && p.bookingId == id && p.kind == 'Collection' && p.amount == n.paymentReceived-b.get('paymentReceived',0) && p.createdAt == request.time && validCouponPayment(id,b);
+    }
+    function validCouponPayment(id,b) {
+      let couponId=b.get('couponId','');
+      return b.status != 'Pending' || couponId == '' || validCouponUse(id,b,couponId);
+    }
+    function validCouponUse(id,b,couponId) {
+      let redemptionId=couponId+'_'+b.userId;
+      let redemptionPath=/databases/$(database)/documents/couponRedemptions/$(redemptionId);
+      let oldCount=exists(redemptionPath) ? get(redemptionPath).data.get('count',0) : 0;
+      let redemption=getAfter(redemptionPath).data;
+      let coupon=get(/databases/$(database)/documents/coupons/$(couponId)).data;
+      return coupon.active != false && coupon.code == b.couponCode && coupon.get('expiresAt',request.time+duration.value(1,'m')) > request.time && redemption.couponId == couponId && redemption.userId == b.userId && redemption.customerEmail == b.customerEmail && redemption.lastBookingId == id && redemption.count == oldCount+1 && redemption.count <= coupon.get('maxUsesPerCustomer',coupon.get('maxUses',1)) && redemption.updatedAt == request.time;
     }
     function validCorrection(id) {
       let b=resource.data;let n=request.resource.data;let p=getAfter(/databases/$(database)/documents/payments/$(n.lastPaymentId)).data;
@@ -146,6 +158,10 @@ service cloud.firestore {
       let plan=get(/databases/$(database)/documents/membershipPlans/$(b.get('membershipId','none'))).data;
       return b.get('passDays',0) == 0 || b.passDays in [10,20,30] && b.inventoryIds.size() == 1 && plan.active != false && b.passDays == plan.get('deskDays',plan.days) && b.base == plan.price*b.inventoryIds.size() && b.discount == 0 && b.rescheduleUsed == 0 && b.rescheduleAllowance == (b.passDays == 10 ? 1 : b.passDays == 20 ? 2 : 3) && b.dates.size() == b.passDays && b.minimumAdvance >= b.total*plan.get('minimumAdvancePercent',(exists(/databases/$(database)/documents/settings/policy) ? get(/databases/$(database)/documents/settings/policy).data.get('minimumAdvancePercent',50) : 50)) / 100 && b.balanceDueDate >= b.date && b.balanceDueDate <= b.endDate;
     }
+    function validCouponBooking(b) {
+      let couponId=b.get('couponId','');
+      return couponId == '' && b.get('couponCode','') == '' || exists(/databases/$(database)/documents/coupons/$(couponId)) && get(/databases/$(database)/documents/coupons/$(couponId)).data.active != false && get(/databases/$(database)/documents/coupons/$(couponId)).data.code == b.couponCode && get(/databases/$(database)/documents/coupons/$(couponId)).data.get('expiresAt',request.time+duration.value(1,'m')) > request.time && (can('bookingsCreate') || get(/databases/$(database)/documents/coupons/$(couponId)).data.get('visibleToUsers',false) == true);
+    }
     function releasedByReschedule() {
       let b=getAfter(/databases/$(database)/documents/bookings/$(resource.data.bookingId)).data;
       let e=getAfter(/databases/$(database)/documents/passChanges/$(b.lastPassChangeId)).data;
@@ -157,7 +173,17 @@ service cloud.firestore {
     }
     function validReceipt(id) {
       let p=request.resource.data;let b=getAfter(/databases/$(database)/documents/bookings/$(p.bookingId)).data;
-      return p.keys().hasOnly(['bookingId','userId','customerEmail','customerName','kind','amount','cashAmount','upiAmount','otherAmount','reference','actorUid','date','createdAt','receiptNumber','originalPaymentId','reason']) && b.lastPaymentId == id && p.actorUid == request.auth.uid && p.createdAt == request.time && p.date == today() && p.userId == b.userId && p.customerEmail == b.customerEmail && p.amount >= 0 && p.cashAmount >= 0 && p.upiAmount >= 0 && p.otherAmount >= 0 && p.amount == p.cashAmount+p.upiAmount+p.otherAmount && (p.kind == 'Collection' && can('paymentsCollect') || p.kind == 'Refund' && can('refundsManage') && b.status == 'Cancelled' && p.amount == b.refundAmount || p.kind == 'Correction' && can('paymentsCorrect') && id == 'reversal_'+p.originalPaymentId && p.reason.size()>0 && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.kind == 'Collection' && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.bookingId == p.bookingId && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.amount == p.amount && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.cashAmount == p.cashAmount && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.upiAmount == p.upiAmount && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.otherAmount == p.otherAmount);
+      return p.keys().hasOnly(['bookingId','userId','customerEmail','customerName','kind','amount','cashAmount','upiAmount','otherAmount','reference','provider','channel','actorUid','date','createdAt','receiptNumber','originalPaymentId','reason']) && b.lastPaymentId == id && p.actorUid == request.auth.uid && p.createdAt == request.time && p.date == today() && p.userId == b.userId && p.customerEmail == b.customerEmail && p.amount >= 0 && p.cashAmount >= 0 && p.upiAmount >= 0 && p.otherAmount >= 0 && p.amount == p.cashAmount+p.upiAmount+p.otherAmount && (p.kind == 'Collection' && can('paymentsCollect') && p.get('provider','manual') == 'manual' || p.kind == 'Refund' && can('refundsManage') && b.status == 'Cancelled' && p.amount == b.refundAmount || p.kind == 'Correction' && can('paymentsCorrect') && id == 'reversal_'+p.originalPaymentId && p.reason.size()>0 && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.kind == 'Collection' && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.bookingId == p.bookingId && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.amount == p.amount && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.cashAmount == p.cashAmount && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.upiAmount == p.upiAmount && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.otherAmount == p.otherAmount);
+    }
+    match /couponRedemptions/{id} {
+      allow read: if can('bookingsView') || signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if validRedemptionWrite(id) && request.resource.data.count == 1 && request.resource.data.createdAt == request.time;
+      allow update: if validRedemptionWrite(id) && request.resource.data.count == resource.data.count+1 && request.resource.data.createdAt == resource.data.createdAt;
+    }
+    function validRedemptionWrite(id) {
+      let r=request.resource.data;
+      let b=getAfter(/databases/$(database)/documents/bookings/$(r.lastBookingId)).data;
+      return can('paymentsCollect') && r.keys().hasOnly(['couponId','couponCode','userId','customerEmail','count','lastBookingId','createdAt','updatedAt']) && id == r.couponId+'_'+r.userId && r.updatedAt == request.time && b.status == 'Confirmed' && b.confirmedAt == request.time && b.couponId == r.couponId && b.couponCode == r.couponCode && b.userId == r.userId && b.customerEmail == r.customerEmail;
     }
     match /handovers/{id} {
       allow read: if can('collectionsView');
@@ -169,11 +195,11 @@ service cloud.firestore {
     }
     match /bookings/{id} {
       allow read: if own(resource.data) || can('bookingsView') || can('revenueView') || can('refundsManage');
-      allow create: if signedIn() && exists(/databases/$(database)/documents/users/$(request.resource.data.userId)) && get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.get('blocked',false) != true && request.resource.data.keys().hasOnly(['date','endDate','dates','days','space','inventoryId','inventoryIds','lockKeys','lockIds','label','userId','userEmail','customerName','customerEmail','customerPhone','createdByRole','walkIn','start','end','durationHours','base','discount','total','offerId','couponCode','membershipId','referralCode','status','addons','amenities','notes','extensionOf','expiresAt','paymentStatus','paymentReceived','passToken','passValidFrom','passValidUntil','refundStatus','createdAt','sessions','billing','cancellationPolicy','passDays','passName','originalEndDate','rescheduleAllowance','rescheduleUsed','minimumAdvance','balanceDueDate']) &&
+      allow create: if signedIn() && exists(/databases/$(database)/documents/users/$(request.resource.data.userId)) && get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.get('blocked',false) != true && request.resource.data.keys().hasOnly(['date','endDate','dates','days','space','inventoryId','inventoryIds','lockKeys','lockIds','label','userId','userEmail','customerName','customerEmail','customerPhone','createdByRole','walkIn','start','end','durationHours','base','discount','total','offerId','couponId','couponCode','membershipId','referralCode','status','addons','amenities','notes','checkoutChannel','extensionOf','expiresAt','paymentStatus','paymentReceived','passToken','passValidFrom','passValidUntil','refundStatus','createdAt','sessions','billing','cancellationPolicy','passDays','passName','originalEndDate','rescheduleAllowance','rescheduleUsed','minimumAdvance','balanceDueDate']) &&
         (request.resource.data.get('extensionOf','') != '' ? extensionAllowed(request.resource.data) : request.resource.data.userId == request.auth.uid && request.resource.data.customerEmail == email() || can('bookingsCreate') && exists(/databases/$(database)/documents/users/$(request.resource.data.userId))) &&
         request.resource.data.date >= today() && request.resource.data.endDate >= request.resource.data.date &&
         request.resource.data.cancellationPolicy.hours == policy().get('cancellationHours',24) && request.resource.data.cancellationPolicy.refundPercent == policy().get('cancellationRefundPercent',100) && request.resource.data.paymentReceived == 0 && request.resource.data.paymentStatus == 'Pending' && request.resource.data.refundStatus == 'Not Requested' && request.resource.data.base is number && request.resource.data.base >= 0 && request.resource.data.total is number && request.resource.data.total >= 0 && request.resource.data.discount is number && request.resource.data.discount >= 0 && request.resource.data.discount <= request.resource.data.base && request.resource.data.lockIds.size() > 0 &&
-        request.resource.data.status == 'Pending' && request.resource.data.expiresAt > request.time && request.resource.data.expiresAt <= request.time + duration.value(16,'m') && (request.resource.data.get('passDays',0) == 0 || validPassTerms(request.resource.data));
+        request.resource.data.status == 'Pending' && request.resource.data.expiresAt > request.time && request.resource.data.expiresAt <= request.time + duration.value(16,'m') && request.resource.data.get('checkoutChannel','whatsapp') in ['whatsapp','staff_manual'] && validCouponBooking(request.resource.data) && (request.resource.data.get('passDays',0) == 0 || validPassTerms(request.resource.data));
       allow update: if bookingUpdate(id);
     }
     function lockMatchesBooking(id) {

@@ -223,7 +223,7 @@ export default function Administration({
               <div className="sectionHeading">
                 <div>
                   <h3>Payment details</h3>
-                  <p>UPI details shared with customers by your team.</p>
+                  <p>Customers complete requests on WhatsApp; staff verifies Cash/UPI before confirmation. Payment records are provider-ready for a future Razorpay connection.</p>
                 </div>
                 <WalletCards />
               </div>
@@ -231,6 +231,7 @@ export default function Administration({
                 ["upiId", "UPI ID"],
                 ["merchantName", "Merchant name"],
               ])}
+              <p className="noticeBox"><b>Current checkout: WhatsApp + manual verification</b><br/>Do not mark a booking paid until the UPI transaction appears in the merchant account or cash is physically received.</p>
               <div className="formActions">
                 <button
                   className="primary"

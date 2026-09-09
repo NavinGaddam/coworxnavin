@@ -34,6 +34,9 @@ import {
   X,
   WifiOff,
   ArrowUpRight,
+  Camera,
+  Inbox,
+  Trash2,
 } from "lucide-react";
 import {
   ADMIN_EMAILS,
@@ -75,6 +78,9 @@ import CustomerHome from "./pages/CustomerHome";
 import Dialog from "./components/Dialog";
 import CommandSearch from "./components/CommandSearch";
 import InstallApp from "./components/InstallApp";
+import UserAvatar from "./components/UserAvatar";
+import { DatePicker } from "./pages/DatePicker";
+import { prepareProfileImage } from "./lib/profileImage";
 import logo from "./assets/coworx-logo-full.png";
 const BookingPage = lazy(() => import("./pages/Booking"));
 const BookingsPage = lazy(() => import("./pages/BookingsPage"));
@@ -104,7 +110,6 @@ const operationalPages: [string, string, Permission, string][] = [
   ["ops:holidays", "Holidays", "resourcesManage", "Workspace"],
   ["ops:pricing", "Pricing", "pricingManage", "Workspace"],
   ["ops:catalog", "Plans & offers", "catalogManage", "Workspace"],
-  ["ops:addons", "Add-ons", "catalogManage", "Workspace"],
   ["ops:wednesday", "Wednesday policy", "pricingManage", "Workspace"],
   ["ops:banners", "Homepage notices", "noticesManage", "Communications"],
   ["ops:comms", "Message templates", "communicationsManage", "Communications"],
@@ -126,6 +131,7 @@ export default function PlatformApp() {
     [command, setCommand] = useState(false),
     [profileOpen, setProfileOpen] = useState(false),
     [profileDraft, setProfileDraft] = useState<any>({}),
+    [photoBusy, setPhotoBusy] = useState(false),
     [saving, setSaving] = useState(false);
   const [matrix, setMatrix] = useState<PermissionMatrix>(DEFAULT_PERMISSIONS),
     [admins, setAdmins] = useState<string[]>(ADMIN_EMAILS),
@@ -252,7 +258,7 @@ export default function PlatformApp() {
       watchPermissions(setMatrix, reportError),
       watchAdmins(setAdmins, reportError),
       watchRoleAssignment(user.email || "", setAssignment),
-      watchOffers(user.email || "", setOffers),
+      watchOffers(user.email || "", setOffers, reportError),
       watchSetting(
         "company",
         (data) => setCompany({ ...companyDefault, ...data }),
@@ -409,6 +415,7 @@ export default function PlatformApp() {
       gender: profile?.gender || "",
       dob: profile?.dob || "",
       profession: profile?.profession || "",
+      photoURL: profile?.photoURL || "",
       company:profile?.company||"",gstNumber:profile?.gstNumber||"",billingAddress:profile?.billingAddress||"",reminderPreferences:profile?.reminderPreferences||{booking:true,expiry:true,balance:true},
     });
     setProfileOpen(true);
@@ -531,7 +538,7 @@ export default function PlatformApp() {
               onClick={openProfile}
               aria-label="Open my profile"
             >
-              {(user.displayName || user.email || "?")[0]}
+              <UserAvatar profile={{...user,...profile,name:profile?.name||user.displayName}} size={44}/>
             </button>
           ) : (
             <button className="primary small" onClick={login} disabled={saving}>
@@ -551,7 +558,8 @@ export default function PlatformApp() {
       {staffPage&&<div className="staffCommandBar"><nav className="primaryStaffNav" aria-label="Daily work">
         {can("bookingsView")&&navButton(role==="Receptionist"?"reception":"dashboard",role==="Receptionist"?"Front Desk":"Overview",LayoutDashboard)}
         {role!=="Receptionist"&&(can("checkIn")||can("checkOut"))&&navButton("reception","Front Desk",ScanLine)}
-        {can("bookingsView")&&navButton("staff-bookings","Bookings",CalendarDays)}
+        {can("bookingsView")&&navButton("staff-bookings","All bookings",CalendarDays)}
+        {can("enquiriesManage")&&navButton("ops:enquiries","Enquiries",Inbox)}
         {can("customersView")&&navButton("ops:customers","Customers",Users)}
         {can("passesView")&&navButton("passes","Passes",Ticket)}
         {can("collectionsView")&&navButton("collections","Collections",WalletCards)}
@@ -621,11 +629,10 @@ export default function PlatformApp() {
       )}
       <div className={staffPage ? "staffLayout" : "customerLayout"}>
         {staffPage && (
-          <aside className="workspaceSidebar"><span className="sidebarEyebrow">WORKSPACE TOOLS</span>
-            {(can("checkIn")||can("checkOut"))&&navButton("reception","Front desk",ScanLine)}
-            {operationalPages.filter(([id,,permission])=>id!=="ops:customers"&&can(permission)).map(([id,label,,group],i,all)=><div key={id}>{(!i||all[i-1][3]!==group)&&<span className="sidebarGroup">{group}</span>}{navButton(id,label,Settings2)}</div>)}
+          <aside className="workspaceSidebar"><span className="sidebarEyebrow">ADVANCED TOOLS</span>
+            {operationalPages.filter(([id,,permission])=>!['ops:customers','ops:enquiries'].includes(id)&&can(permission)).map(([id,label,,group],i,all)=><div key={id}>{(!i||all[i-1][3]!==group)&&<span className="sidebarGroup">{group}</span>}{navButton(id,label,Settings2)}</div>)}
             {hasAdmin&&navButton("administration","Business settings",Settings2)}
-            <div className="sidebarIdentity"><span className="avatar small">{(user?.displayName||"?")[0]}</span><span><b>{user?.displayName?.split(" ")[0]}</b><small>{owner?"Owner":role}</small></span></div>
+            <div className="sidebarIdentity"><UserAvatar profile={{...user,...profile,name:profile?.name||user?.displayName}} size={38}/><span><b>{user?.displayName?.split(" ")[0]}</b><small>{owner?"Owner":role}</small></span></div>
           </aside>
         )}
         <div className="pageContent">
@@ -663,6 +670,7 @@ export default function PlatformApp() {
                     activeLocks={liveLocks}
                     maintenance={blocks}
                     offers={offers}
+                    upi={upi}
                     banners={activeBanners}
                     availabilityLoaded={availabilityLoaded}
                     nav={nav}
@@ -856,13 +864,18 @@ export default function PlatformApp() {
       )}
       {profileOpen && (
         <Dialog title="Your profile" onClose={() => setProfileOpen(false)}>
-          <p>
-            {user?.displayName} · {user?.email}
-          </p>
+          <div className="profilePhotoEditor">
+            <UserAvatar profile={{...user,...profileDraft,name:user?.displayName}} size={78}/>
+            <div><strong>{user?.displayName}</strong><span>{user?.email}</span><small>Profile photo is optional. A gender-based avatar is used when none is added.</small></div>
+            <label className="ghost profilePhotoButton">
+              <Camera size={17}/>{photoBusy?"Preparing…":profileDraft.photoURL?"Change photo":"Add photo"}
+              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={photoBusy||saving} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;setPhotoBusy(true);try{const photoURL=await prepareProfileImage(file);setProfileDraft({...profileDraft,photoURL});}catch(error){reportError(error);}finally{setPhotoBusy(false);e.target.value="";}}}/>
+            </label>
+            {profileDraft.photoURL&&<button className="textButton dangerText" type="button" onClick={()=>setProfileDraft({...profileDraft,photoURL:""})}><Trash2 size={16}/>Remove</button>}
+          </div>
           <div className="fieldGrid">
             {[
               ["phone", "Mobile", "tel"],
-              ["dob", "Date of birth", "date"],
               ["profession", "Profession", "text"],
             ].map(([key, label, type]) => (
               <label key={key}>
@@ -876,6 +889,8 @@ export default function PlatformApp() {
                 />
               </label>
             ))}
+            <div className="customerDateField"><DatePicker label="Date of birth" value={profileDraft.dob||""} min="1900-01-01" max={localToday()} placeholder="Choose date of birth" onChange={dob=>setProfileDraft({...profileDraft,dob})}/></div>
+            <label>Gender<select value={profileDraft.gender||""} onChange={e=>setProfileDraft({...profileDraft,gender:e.target.value})}><option value="">Prefer not to say</option><option>Female</option><option>Male</option><option>Other</option></select></label>
           </div>
           <div className="fieldGrid">{[["company","Company"],["gstNumber","GST number"],["billingAddress","Billing address"]].map(([key,label])=><label key={key}>{label}<input value={profileDraft[key]||""} onChange={e=>setProfileDraft({...profileDraft,[key]:e.target.value})}/></label>)}</div>
           <div className="preferenceRow">{[["booking","Booking reminders"],["expiry","Pass expiry reminders"],["balance","Payment reminders"]].map(([key,label])=><label className="checkLabel" key={key}><input type="checkbox" checked={profileDraft.reminderPreferences?.[key]!==false} onChange={e=>setProfileDraft({...profileDraft,reminderPreferences:{...profileDraft.reminderPreferences,[key]:e.target.checked}})}/>{label}</label>)}</div>

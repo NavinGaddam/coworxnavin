@@ -2,6 +2,7 @@ import { watchPayments, downloadReceipt } from "../lib/finance";
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
+  Clock3,
   CheckCircle2,
   Download,
   MessageCircle,
@@ -18,6 +19,10 @@ import { balance, bookingOn, cancellationQuote, money, paymentAccessError, sessi
 import BookingPass from "../components/BookingPass";
 import Dialog from "../components/Dialog";
 import { localToday } from "./types";
+import { DatePicker } from "./DatePicker";
+
+const createdMillis=(b:any)=>b.createdAt?.toMillis?.()||b.createdAt?.toDate?.()?.getTime?.()||0;
+const bookedAt=(b:any)=>{const date=b.createdAt?.toDate?.();return date?date.toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"numeric",month:"short",year:"numeric",hour:"numeric",minute:"2-digit"}):"Time unavailable";};
 export default function BookingsPage({
   bookings = [],
   staff = false,
@@ -30,9 +35,10 @@ export default function BookingsPage({
   onFlash,
   book,
 }: any) {
-  const [filter, setFilter] = useState(staff ? "all" : "upcoming"),
+  const [filter, setFilter] = useState(staff ? "today" : "upcoming"),
     [search, setSearch] = useState(""),
-    [date, setDate] = useState("");
+    [fromDate, setFromDate] = useState(""),
+    [toDate, setToDate] = useState("");
   const [pass, setPass] = useState<any>(null),
     [payment, setPayment] = useState<any>(null),
     [cancelling, setCancelling] = useState<any>(null),
@@ -67,12 +73,14 @@ export default function BookingsPage({
                 .join(" ")
                 .toLowerCase()
                 .includes(search.toLowerCase())) &&
-            (!date || bookingOn(b,date)) &&
+            (!fromDate || (b.endDate||b.date)>=fromDate) &&
+            (!toDate || b.date<=toDate) &&
             (filter === "all" ||
+              (filter === "today" && bookingOn(b,localToday()) && ["Pending","Confirmed"].includes(state)) ||
               (filter === "pending" && state === "Pending") ||
               (filter === "upcoming" &&
                 ["Pending", "Confirmed"].includes(state) &&
-                (b.endDate || b.date) >= localToday()) ||
+                (staff ? b.date>localToday() : (b.endDate || b.date) >= localToday())) ||
               (filter === "past" &&
                 state === "Confirmed" &&
                 (b.endDate || b.date) < localToday()) ||
@@ -80,10 +88,8 @@ export default function BookingsPage({
                 ["Cancelled", "Expired"].includes(state)))
           );
         })
-        .sort((a: any, b: any) =>
-          (b.date + (b.start || "")).localeCompare(a.date + (a.start || "")),
-        ),
-    [bookings, search, filter, date, tick, passesOnly],
+        .sort((a: any, b: any) => createdMillis(b)-createdMillis(a) || (b.date + (b.start || "")).localeCompare(a.date + (a.start || ""))),
+    [bookings, search, filter, fromDate, toDate, tick, passesOnly, staff],
   );
   const run = async (fn: () => Promise<any>, success: string) => {
     setBusy(true);
@@ -123,7 +129,7 @@ export default function BookingsPage({
       <div className="listToolbar">
         <div className="segmented">
           {(staff
-            ? ["all", "pending", "upcoming", "past", "cancelled"]
+            ? ["today", "upcoming", "past", "pending", "all", "cancelled"]
             : ["upcoming", "past", "cancelled"]
           ).map((id) => (
             <button
@@ -146,15 +152,14 @@ export default function BookingsPage({
             placeholder="Customer, desk or space"
           />
         </label>
-        <input
-          type="date"
-          aria-label="Filter booking date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
-        {date && (
-          <button className="textButton" onClick={() => setDate("")}>
-            Clear date
+        <div className="bookingDateRange" aria-label="Booking date range">
+          <DatePicker value={fromDate} onChange={value=>{setFromDate(value);if(toDate&&toDate<value)setToDate(value);}} placeholder="From date"/>
+          <span>to</span>
+          <DatePicker value={toDate} onChange={setToDate} min={fromDate||undefined} placeholder="To date"/>
+        </div>
+        {(fromDate||toDate) && (
+          <button className="textButton" onClick={() => {setFromDate("");setToDate("");}}>
+            Clear range
           </button>
         )}
       </div>
@@ -181,6 +186,7 @@ export default function BookingsPage({
                       ? b.customerName || b.customerEmail
                       : "Coworx Central · Solapur"}
                   </p>
+                  <span className="bookingCreated"><Clock3 size={14}/>Booked {bookedAt(b)} · {b.walkIn?"Front desk":b.checkoutChannel==="whatsapp"?"WhatsApp request":"Online"}</span>
                 </div>
                 <span
                   className={`statePill ${status(b) === "Confirmed" ? "good" : status(b) === "Pending" ? "warn" : ""}`}
@@ -335,8 +341,8 @@ export default function BookingsPage({
               <CalendarDays />
               <h3>No bookings here yet</h3>
               <p>
-                {search || date
-                  ? "Try a different search or date."
+                {search || fromDate || toDate
+                  ? "Try a different search or date range."
                   : "Your next workday is just a booking away."}
               </p>
               <button className="primary" onClick={book}>

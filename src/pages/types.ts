@@ -48,6 +48,7 @@ export type Offer = {
   autoApply?: boolean;
   couponCode?: string;
   expiresAt?: any;
+  visibleToUsers?: boolean;
 };
 export type Booking = {
   id: string;
@@ -74,6 +75,7 @@ export type Booking = {
   total: number;
   offerId?: string | null;
   couponCode?: string;
+  couponId?: string;
   membershipId?: string;
   referralCode?: string;
   status: BookingStatus;
@@ -87,6 +89,7 @@ export type Booking = {
   confirmedAt?: any;
   expiresAt?: any;
   createdAt?: any;
+  checkoutChannel?: "whatsapp" | "staff_manual" | "razorpay";
   checkedInAt?: any;
   checkedOutAt?: any;
   attendanceDate?: string;

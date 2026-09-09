@@ -28,11 +28,22 @@ export async function collectPayment(id: string, tender: Tender, discount = 0, e
     if (total < 0 || received > total || (amount <= 0 && total > 0)) throw Error("Payment must be greater than zero and no more than the balance.");
     if (!b.passDays && received !== total) throw Error("Regular bookings require full advance payment.");
     if (b.passDays && received < Math.min(total,Number(b.minimumAdvance))) throw Error(`Collect at least ${money(Math.min(total,Number(b.minimumAdvance))-old)} to activate this pass.`);
+    const couponRef=b.status==="Pending"&&b.couponId?doc(db,"coupons",b.couponId):null;
+    const redemptionRef=couponRef?doc(db,"couponRedemptions",`${b.couponId}_${b.userId}`):null;
+    const couponSnapshot=couponRef?await tx.get(couponRef):null;
+    const redemptionSnapshot=redemptionRef?await tx.get(redemptionRef):null;
+    if(couponRef){
+      if(!couponSnapshot?.exists())throw Error("This coupon no longer exists.");
+      const coupon:any=couponSnapshot.data(), used=Number(redemptionSnapshot?.data()?.count||0), max=Number(coupon.maxUsesPerCustomer??coupon.maxUses??1);
+      if(coupon.active===false||String(coupon.code)!==String(b.couponCode)||used>=max)throw Error("This customer has already used this coupon the maximum number of times.");
+      if(coupon.expiresAt?.toMillis?.()&&coupon.expiresAt.toMillis()<=Date.now())throw Error("This coupon has expired.");
+    }
     const lockRefs = b.lockIds.map((key:string) => doc(db,"bookingLocks",key));
     const locks = await Promise.all(lockRefs.map((r:any) => tx.get(r)));
     if (locks.some((l:any) => !l.exists() || l.data().bookingId !== id || !["Pending","Confirmed"].includes(l.data().status))) throw Error("The reserved space changed. Please review this booking before taking payment.");
     const receiptNumber = `RC-${localToday().replaceAll("-","")}-${receipt.id.slice(0,8).toUpperCase()}`;
-    tx.set(receipt,{bookingId:id,userId:b.userId,customerEmail:b.customerEmail,customerName:b.customerName || b.customerEmail,kind:"Collection",amount,cashAmount:Number(tender.cash),upiAmount:Number(tender.upi),otherAmount:Number(tender.other),reference:tender.reference.trim(),actorUid:uid,date:localToday(),createdAt:serverTimestamp(),receiptNumber});
+    tx.set(receipt,{bookingId:id,userId:b.userId,customerEmail:b.customerEmail,customerName:b.customerName || b.customerEmail,kind:"Collection",amount,cashAmount:Number(tender.cash),upiAmount:Number(tender.upi),otherAmount:Number(tender.other),reference:tender.reference.trim(),provider:"manual",channel:b.checkoutChannel||"staff_manual",actorUid:uid,date:localToday(),createdAt:serverTimestamp(),receiptNumber});
+    if(redemptionRef)tx.set(redemptionRef,{couponId:b.couponId,couponCode:b.couponCode,userId:b.userId,customerEmail:b.customerEmail,count:Number(redemptionSnapshot?.data()?.count||0)+1,lastBookingId:id,updatedAt:serverTimestamp(),...(redemptionSnapshot?.exists()?{}:{createdAt:serverTimestamp()})},{merge:true});
     tx.update(ref,{status:"Confirmed",expiresAt:null,total,staffDiscount:discount,paymentReceived:received,paymentStatus:received === total ? "Paid" : "Partially Paid",paymentMethod:[tender.cash>0&&"Cash",tender.upi>0&&"UPI",tender.other>0&&"Other"].filter(Boolean).join(" + ") || "No charge",paymentRef:tender.reference.trim(),lastPaymentId:receipt.id,confirmedBy:uid,confirmedAt:serverTimestamp(),invoiceNumber:b.invoiceNumber || `${company.data()?.invoicePrefix || "CC"}-${localToday().slice(0,4)}-${id.slice(0,8).toUpperCase()}`});
     lockRefs.forEach((r:any) => tx.update(r,{status:"Confirmed",expiresAt:null,updatedAt:serverTimestamp()}));
     return receiptNumber;

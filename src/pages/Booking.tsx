@@ -2,6 +2,7 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import PaymentDialog from "../components/PaymentDialog";
+import { collectPayment, emptyTender, tenderTotal } from "../lib/finance";
 import { DEFAULT_POLICY, consecutiveDates, officeHours, PASS_ALLOWANCES, minutes } from "../lib/business";
 import CustomerPicker from "../components/CustomerPicker";
 import { watchSetting, watchLocksRange } from "../lib/platform";
@@ -25,6 +26,7 @@ import {
   Zap,
   UserPlus,
   Save,
+  WalletCards,
 } from "lucide-react";
 import {
   Space,
@@ -47,12 +49,12 @@ import {
   loadOperationsSettings,
   loadPolicy,
   saveUserProfile,
-  watchAddons,
   watchCoupons,
   watchResourceBlocksRange,
   watchHolidays,
   watchPricingRules,
   watchMembershipPlans,
+  watchCouponRedemptions,
 } from "../lib/firestore";
 import conferenceImage from "../assets/conference-2.webp";
 import podcastImage from "../assets/podcast.webp";
@@ -137,6 +139,7 @@ export default function Booking(p: any) {
     referralRewardPercent: 0,
   });
   const [plans,setPlans]=useState<any[]>([]),[planId,setPlanId]=useState(""),[paymentBooking,setPaymentBooking]=useState<any>(null);
+  const [tender,setTender]=useState(emptyTender()),[paymentVerified,setPaymentVerified]=useState(false);
   const selectedPlan=isDesk ? plans.find(x=>x.id===planId&&x.active!==false) : null;
   const passDays=selectedPlan ? Number(selectedPlan.deskDays || selectedPlan.days) : 0;
   const [coupons, setCoupons] = useState<any[]>([]);
@@ -161,11 +164,10 @@ export default function Booking(p: any) {
       otherProfession: "",
     });
   }, [p.staffBooking]);
-  const [addons, setAddons] = useState<any[]>([]);
   const [blocks, setBlocks] = useState<any[]>([]);
   const [couponCode, setCouponCode] = useState("");
   const [referralCode, setReferralCode] = useState("");
-  const [amenities, setAmenities] = useState<string[]>([]);
+  const [drink, setDrink] = useState("");
   const [addonQty, setAddonQty] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState("");
   const [holidays, setHolidays] = useState<any[]>([]);
@@ -184,18 +186,24 @@ export default function Booking(p: any) {
     loadOperationsSettings()
       .then(setOps)
       .catch(() => {});
-    const a = watchCoupons(setCoupons, () => {}),
-      b = watchAddons(setAddons, () => {}),
+    const a = watchCoupons(setCoupons, () => {}, !p.staff),
       c = watchHolidays(setHolidays, () => {}),
       d = watchPricingRules(setPricingRules, () => {});
     return () => {
       stopPolicy();stopPlans();
       a();
-      b();
       c();
       d();
     };
   }, []);
+  const couponCustomerId=p.staffBooking?selectedCustomer?.uid:p.user?.uid;
+  const [couponUses,setCouponUses]=useState<Record<string,number>>({});
+  useEffect(()=>{
+    setCouponUses({});
+    if(!couponCustomerId)return;
+    return watchCouponRedemptions(couponCustomerId,rows=>setCouponUses(Object.fromEntries(rows.map((r:any)=>[r.couponId,Number(r.count||0)]))),()=>{});
+  },[couponCustomerId]);
+  useEffect(()=>{setTender(emptyTender());setPaymentVerified(false);},[p.staffBooking,selectedCustomer?.uid]);
   useEffect(() => {
     if (endDate < p.date) setEndDate(p.date);
   }, [p.date, endDate]);
@@ -338,13 +346,14 @@ export default function Booking(p: any) {
         )
       : 0;
   const holidayDates = dates.filter(d=>officeHours(d,policy,holidays).closed);
-  const coupon = coupons.find(
+  const coupon = !passDays ? coupons.find(
     (c) =>
       c.active &&
+      (p.staffBooking || c.visibleToUsers === true) &&
       String(c.code || "").toUpperCase() === couponCode.trim().toUpperCase() &&
       (!c.expiresAt || c.expiresAt.toMillis?.() > Date.now()) &&
-      (!c.maxUses || Number(c.usedCount || 0) < Number(c.maxUses)),
-  );
+      Number(couponUses[c.id] || 0) < Number(c.maxUsesPerCustomer ?? c.maxUses ?? 1),
+  ) : null;
   const couponDiscount = coupon
     ? coupon.type === "percent"
       ? Math.round((baseTotal * Number(coupon.value || 0)) / 100)
@@ -356,6 +365,7 @@ export default function Booking(p: any) {
       : 0;
   const durationValue = isDesk ? days : duration;
   const eligibleOffers = (p.offers || []).filter((o: any) => {
+    if(o.autoApply===false)return false;
     const minD = Number(o.minDays || 0),
       maxD = Number(o.maxDays || 0);
     if (!minD && !maxD) return true;
@@ -382,21 +392,14 @@ export default function Booking(p: any) {
       offerDiscount +
       wednesdayDiscount,
   );
-  const selectedAddons = addons
-    .filter((a) => a.active && (a.space === "all" || a.space === p.space))
-    .map((a) => {
-      const qty = Number(addonQty[a.id] || 0);
-      return {
-        id: a.id,
-        name: a.name,
-        qty,
-        unitPrice: Number(a.unitPrice || 0),
-        total: qty * Number(a.unitPrice || 0),
-      };
-    })
-    .filter((a) => a.qty > 0);
+  const printingPages=Math.max(0,Math.min(200,Math.floor(Number(addonQty.printing||0))));
+  const selectedAddons = printingPages ? [{id:"printing",name:"Printing",qty:printingPages,unitPrice:5,total:printingPages*5}] : [];
+  const amenities=drink?[drink]:[];
   const addonTotal = selectedAddons.reduce((n, a) => n + a.total, 0);
   const total = Math.max(0, baseTotal - discount + addonTotal);
+  const minimumDue=selectedPlan?Math.ceil(total*Number(selectedPlan.minimumAdvancePercent||policy.minimumAdvancePercent||50))/100:total;
+  const payingNow=Math.round((Number(tender.cash||0)+Number(tender.upi||0)+Number(tender.other||0))*100)/100;
+  const paymentReady=!p.staffBooking||Boolean(p.canConfirm&&paymentVerified&&payingNow<=total&&(selectedPlan?payingNow>=minimumDue:payingNow===total)&&(!tender.upi||tender.reference.trim()));
   const valid = isDesk
     ? selected.length > 0
     : !startBusy && roomAvailable > 0 && duration <= roomAvailable;
@@ -435,6 +438,15 @@ export default function Booking(p: any) {
         return setMessage(
           "Choose an existing customer or save a new customer first.",
         );
+      if (!p.canConfirm)
+        return setMessage("This role cannot collect payments. Ask an authorised manager or receptionist to complete the walk-in booking.");
+      try {
+        tenderTotal(tender);
+      } catch (error:any) {
+        return setMessage(error.message);
+      }
+      if (!paymentReady)
+        return setMessage(selectedPlan?`Verify at least ₹${minimumDue.toLocaleString("en-IN")} received before creating this pass.`:`Verify the full ₹${total.toLocaleString("en-IN")} advance payment before booking.`);
       setModal(false);
       void submit();
       return;
@@ -550,20 +562,37 @@ export default function Booking(p: any) {
         discount,
         total,
         offerId: bestOffer?.o?.id || null,
+        couponId: coupon?.id || "",
         couponCode: coupon?.code || "",
         referralCode: referralCode.trim().toUpperCase(),
         addons: selectedAddons,
         amenities,
         notes,
+        checkoutChannel:p.staffBooking?"staff_manual":"whatsapp",
         status: "Pending",
       });
       if (p.staffBooking && p.canConfirm) {
-        const saved=await getDoc(doc(db,"bookings",created.id));
-        setPaymentBooking({id:created.id,...saved.data()});
+        try {
+          const receipt=await collectPayment(created.id,tender,0,0);
+          setMessage(`Booking confirmed for ${email}. Receipt ${receipt}.`);
+          setTender(emptyTender());
+          setPaymentVerified(false);
+          p.setSelectedSeats([]);
+          p.onBooked?.();
+          p.nav?.("staff-bookings");
+          return;
+        } catch(paymentError:any) {
+          const saved=await getDoc(doc(db,"bookings",created.id));
+          setPaymentBooking({id:created.id,...saved.data()});
+          const error:any=new Error(`Booking ${created.id.slice(0,8).toUpperCase()} is safely held, but payment was not recorded: ${paymentError.message}`);
+          error.paymentPending=true;
+          throw error;
+        }
       }
       if (!p.staffBooking) {
         const deskText = isDesk ? `Desk number(s): ${selected.join(", ")}` : "";
-        const text = `Hello Coworx Central, I want to book ${isDesk ? `${selected.length} desk(s) — ${selected.join(", ")}` : getTitle(p.space)} from ${p.date} to ${endDate}${isDesk ? "" : ` · ${start}–${end}`}. ${deskText} Total: ₹${total}. Mobile: ${phone}.`;
+        const paymentLine=p.upi?.upiId?` Please share payment instructions for UPI ${p.upi.upiId}.`:" Please share payment instructions.";
+        const text = `Hello Coworx Central, please complete booking ${created.id.slice(0,8).toUpperCase()} for ${isDesk ? `${selected.length} desk(s) — ${selected.join(", ")}` : getTitle(p.space)} from ${p.date} to ${endDate}${isDesk ? "" : ` · ${start}–${end}`}. ${deskText} Amount due: ₹${total}. Mobile: ${phone}.${paymentLine}`;
         const url = `https://wa.me/919970836509?text=${encodeURIComponent(text)}`;
         setWhatsAppUrl(url);
         if (waWindow) waWindow.location.href = url;
@@ -659,8 +688,8 @@ export default function Booking(p: any) {
       </div>
       <div className="bookingGrid">
         <section className="panel bookingPanel">
-          {isDesk&&<div className="passChooser"><label>Booking type<select value={planId} onChange={e=>{setPlanId(e.target.value);setEndDate(p.date);p.setSelectedSeats([]);}}><option value="">Regular desk booking · full advance</option>{plans.filter(x=>x.active!==false&&PASS_ALLOWANCES[Number(x.deskDays||x.days)]).map(x=><option key={x.id} value={x.id}>{x.name} · {Number(x.deskDays||x.days)} working days · ₹{x.price}/desk</option>)}</select></label>{selectedPlan&&<p className="noticeBox">One desk per pass · {passDays} consecutive working days, excluding Sundays and declared holidays. {PASS_ALLOWANCES[passDays]} day reschedule allowance. Partial advance permitted; extra reschedules require admin approval.</p>}</div>}
-          {passDays?<div className="fieldGrid"><label>Pass starts<input type="date" min={localToday()} max={maxDate} value={p.date} onChange={e=>{if(e.target.value)p.setDate(e.target.value)}}/></label><div><small>Last included working day</small><strong className="passEndDate">{endDate}</strong></div></div>:<DateRangePicker
+          {isDesk&&<div className="passChooser"><label>Booking type<select value={planId} onChange={e=>{setPlanId(e.target.value);setEndDate(p.date);setCouponCode("");p.setSelectedSeats([]);setPaymentVerified(false);}}><option value="">Regular desk booking · full advance</option>{plans.filter(x=>x.active!==false&&PASS_ALLOWANCES[Number(x.deskDays||x.days)]).map(x=><option key={x.id} value={x.id}>{x.name} · {Number(x.deskDays||x.days)} working days · ₹{x.price}/desk</option>)}</select></label>{selectedPlan&&<p className="noticeBox">One desk per pass · {passDays} consecutive working days, excluding Sundays and declared holidays. {PASS_ALLOWANCES[passDays]} day reschedule allowance. Partial advance permitted; extra reschedules require admin approval.</p>}</div>}
+          {passDays?<div className="fieldGrid"><div className="customerDateField"><DatePicker label="Pass starts" min={localToday()} max={maxDate} value={p.date} onChange={value=>{p.setDate(value);setPaymentVerified(false);}}/></div><div><small>Last included working day</small><strong className="passEndDate">{endDate}</strong></div></div>:<DateRangePicker
             start={p.date}
             end={endDate}
             min={localToday()}
@@ -668,6 +697,7 @@ export default function Booking(p: any) {
             onChange={(s, e) => {
               p.setDate(s);
               setEndDate(e);
+              setPaymentVerified(false);
             }}
             highlight={(d) =>
               holidays.some((h: any) => h.date === d)
@@ -773,9 +803,12 @@ export default function Booking(p: any) {
             />
           )}
           <Extras
-            addons={addons}
             qty={addonQty}
             setQty={setAddonQty}
+            coupons={coupons}
+            couponUses={couponUses}
+            staff={p.staffBooking}
+            disabled={!!passDays}
             couponCode={couponCode}
             setCouponCode={setCouponCode}
             coupon={coupon}
@@ -783,11 +816,14 @@ export default function Booking(p: any) {
             setReferralCode={setReferralCode}
             reward={ops.referralRewardPercent}
             referralEnabled={ops.referralEnabled}
-            amenities={amenities}
-            setAmenities={setAmenities}
+            drink={drink}
+            setDrink={setDrink}
             notes={notes}
             setNotes={setNotes}
           />
+          {p.staffBooking&&(
+            <StaffPaymentPanel total={total} minimumDue={minimumDue} passDays={passDays} tender={tender} setTender={(next:any)=>{setTender(next);setPaymentVerified(false);}} verified={paymentVerified} setVerified={setPaymentVerified} canCollect={p.canConfirm}/>
+          )}
         </section>
         <Summary
           officeHours={hours}
@@ -819,6 +855,8 @@ export default function Booking(p: any) {
           wednesdayDiscount={wednesdayDiscount}
           addonTotal={addonTotal}
           total={total}
+          paymentReady={paymentReady}
+          payingNow={payingNow}
           withinAdvance={withinAdvance}
           maintenance={blockedRange || holidayDates.length > 0}
           roomBooked={startBusy}
@@ -1115,7 +1153,7 @@ function RoomCard({ p, space, start, duration, available, locks, officeHours }: 
                 <span key={t}>{t}</span>
               ))}
             </div>
-            <small>Booking stops at the next occupied time or 7:00 PM.</small>
+            <small>Booking stops at the next occupied time or {officeHours.end}.</small>
           </div>
         )}
       </div>
@@ -1133,9 +1171,12 @@ function setDuration(p: any, v: number) {
   else p.setPodDuration(v);
 }
 function Extras({
-  addons,
   qty,
   setQty,
+  coupons,
+  couponUses,
+  staff,
+  disabled,
   couponCode,
   setCouponCode,
   coupon,
@@ -1143,8 +1184,8 @@ function Extras({
   setReferralCode,
   referralEnabled,
   reward,
-  amenities,
-  setAmenities,
+  drink,
+  setDrink,
   notes,
   setNotes,
 }: any) {
@@ -1159,18 +1200,22 @@ function Extras({
       </div>
       <div className="extrasGrid">
         <label>
-          Coupon code
-          <input
+          Coupon
+          <select
             value={couponCode}
-            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-            placeholder="WELCOME10"
-          />
+            disabled={disabled}
+            onChange={(e) => setCouponCode(e.target.value)}
+          >
+            <option value="">No coupon</option>
+            {coupons.filter((c:any)=>c.active&&(!c.expiresAt||c.expiresAt.toMillis?.()>Date.now())&&(staff||c.visibleToUsers===true)&&Number(couponUses[c.id]||0)<Number(c.maxUsesPerCustomer??c.maxUses??1)).map((c:any)=><option key={c.id} value={c.code}>{c.code} · {c.type==="percent"?`${c.value}%`:`₹${c.value}`} off{c.visibleToUsers===false?" · staff only":""}</option>)}
+          </select>
           {coupon && (
             <small className="goodText">
               {coupon.value}
               {coupon.type === "percent" ? "%" : "₹"} discount ready
             </small>
           )}
+          {disabled&&<small>Pass pricing is already fixed; coupons do not stack.</small>}
         </label>
         <label>
           Referral code
@@ -1187,46 +1232,11 @@ function Extras({
         </label>
       </div>
       <div className="addonGrid">
-        {addons
-          .filter((a) => a.active)
-          .map((a) => (
-            <label className="addonRow" key={a.id}>
-              <span>
-                <b>{a.name}</b>
-                <small>₹{a.unitPrice} each</small>
-              </span>
-              <input
-                type="number"
-                min="0"
-                max="20"
-                value={qty[a.id] || 0}
-                onChange={(e) =>
-                  setQty({ ...qty, [a.id]: Number(e.target.value) })
-                }
-              />
-            </label>
-          ))}
-      </div>
-      <div className="amenityChips">
-        {["Projector", "Whiteboard", "Coffee / Tea", "Printing", "Locker"].map(
-          (a) => (
-            <button
-              key={a}
-              type="button"
-              className={amenities.includes(a) ? "active" : ""}
-              onClick={() =>
-                setAmenities(
-                  amenities.includes(a)
-                    ? amenities.filter((x: string) => x !== a)
-                    : [...amenities, a],
-                )
-              }
-            >
-              {amenities.includes(a) ? "✓ " : ""}
-              {a}
-            </button>
-          ),
-        )}
+        <div className="addonRow drinkChoice"><span><b>One complimentary drink</b><small>Choose coffee or tea · no charge</small></span><div className="drinkButtons"><button type="button" className={!drink?"active":""} onClick={()=>setDrink("")}>None</button><button type="button" className={drink==="Coffee"?"active":""} onClick={()=>setDrink("Coffee")}>Coffee</button><button type="button" className={drink==="Tea"?"active":""} onClick={()=>setDrink("Tea")}>Tea</button></div></div>
+        <label className="addonRow">
+          <span><b>Printing</b><small>₹5 per page</small></span>
+          <input type="number" inputMode="numeric" min="0" max="200" step="1" aria-label="Printing pages" value={qty.printing||0} onChange={e=>setQty({...qty,printing:Math.max(0,Math.min(200,Math.floor(Number(e.target.value))))})}/>
+        </label>
       </div>
       <label className="notesField">
         Booking note
@@ -1238,6 +1248,20 @@ function Extras({
       </label>
     </section>
   );
+}
+function StaffPaymentPanel({total,minimumDue,passDays,tender,setTender,verified,setVerified,canCollect}:any){
+  const amount=Math.round((Number(tender.cash||0)+Number(tender.upi||0))*100)/100;
+  const fill=(method:"cash"|"upi",value:number)=>setTender({...emptyTender(),[method]:value});
+  return <section className="staffPaymentPanel panel">
+    <div className="extrasHead"><div><span className="eyebrow">02 / PAYMENT</span><h3>Receive advance payment</h3></div><WalletCards/></div>
+    {!canCollect?<p className="inlineError">Your role can create requests but cannot collect money. Ask an authorised teammate to complete this booking.</p>:<>
+      <div className="paymentDueLine"><span>{passDays?"Minimum required now":"Full advance required"}</span><strong>₹{minimumDue.toLocaleString("en-IN")}</strong><small>Booking total ₹{total.toLocaleString("en-IN")}</small></div>
+      <div className="paymentQuickButtons"><button type="button" className="ghost" onClick={()=>fill("upi",total)}>Full by UPI</button><button type="button" className="ghost" onClick={()=>fill("cash",total)}>Full by cash</button>{passDays&&minimumDue<total&&<button type="button" className="ghost" onClick={()=>fill("upi",minimumDue)}>Minimum by UPI</button>}</div>
+      <div className="fieldGrid paymentFields"><label>Cash received ₹<input type="number" inputMode="decimal" min="0" step="0.01" value={tender.cash} onChange={e=>setTender({...tender,cash:Number(e.target.value)})}/></label><label>UPI received ₹<input type="number" inputMode="decimal" min="0" step="0.01" value={tender.upi} onChange={e=>setTender({...tender,upi:Number(e.target.value)})}/></label><label className="full">UPI transaction reference{Number(tender.upi)>0?" *":""}<input value={tender.reference} onChange={e=>setTender({...tender,reference:e.target.value})} placeholder="Verify in the merchant app, then enter reference"/></label></div>
+      <div className={`paymentReconcile ${amount>total?"bad":""}`}><span>Receiving now</span><b>₹{amount.toLocaleString("en-IN")}</b><small>{amount>total?"Amount exceeds booking total":passDays&&amount<minimumDue?`₹${(minimumDue-amount).toLocaleString("en-IN")} more required`:!passDays&&amount!==total?`Enter exactly ₹${total.toLocaleString("en-IN")}`:`Remaining after payment: ₹${Math.max(0,total-amount).toLocaleString("en-IN")}`}</small></div>
+      <label className="checkLabel paymentVerify"><input type="checkbox" checked={verified} onChange={e=>setVerified(e.target.checked)}/><span>I verified the cash and/or UPI amount received. Save an immutable receipt and confirm this booking.</span></label>
+    </>}
+  </section>;
 }
 function Summary({
   officeHours,passDays,
@@ -1265,6 +1289,8 @@ function Summary({
   wednesdayDiscount,
   addonTotal,
   total,
+  paymentReady,
+  payingNow,
   withinAdvance,
   maintenance,
   roomBooked,
@@ -1382,10 +1408,11 @@ function Summary({
             : "Online requests reserve the selected resource for 15 minutes while payment is completed."}
         </span>
       </div>
+      {staffBooking&&<div className={`summaryPaymentState ${paymentReady?"ready":""}`}><span>{paymentReady?"Payment verified":"Payment required"}</span><strong>₹{Number(payingNow||0).toLocaleString("en-IN")}</strong></div>}
       <button
         className="primary bookCta"
         disabled={
-          !withinAdvance || !valid || maintenance || busy || !customerReady
+          !withinAdvance || !valid || maintenance || busy || !customerReady || (staffBooking&&!paymentReady)
         }
         onClick={onBook}
       >
@@ -1394,7 +1421,7 @@ function Summary({
         ) : staffBooking ? (
           <>
             <CheckCircle2 />{" "}
-            {canConfirm ? "Continue to payment" : "Create booking request"}
+            {canConfirm ? "Receive payment & confirm" : "Payment permission required"}
           </>
         ) : (
           <>
@@ -1502,14 +1529,9 @@ function ProfileModal({
               <option>Prefer not to say</option>
             </select>
           </label>
-          <label>
-            <span>Date of birth</span>
-            <input
-              type="date"
-              value={profile.dob || ""}
-              onChange={(e) => setProfile({ ...profile, dob: e.target.value })}
-            />
-          </label>
+          <div className="customerDateField">
+            <DatePicker label="Date of birth" value={profile.dob||""} min="1900-01-01" max={localToday()} placeholder="Choose date of birth" onChange={dob=>setProfile({...profile,dob})}/>
+          </div>
           <label>
             <span>Profession</span>
             <select

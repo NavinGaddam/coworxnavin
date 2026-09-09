@@ -388,7 +388,7 @@ describe("prepaid operations and consecutive passes",()=>{
     await collectPayment(created.id,{cash:100,upi:150,other:0,reference:"UPI-123"});
     const b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;
     const receipt=(await getDoc(doc(session.db,"payments",b.lastPaymentId))).data()!;
-    expect(b.paymentReceived).toBe(250);expect(receipt.cashAmount).toBe(100);expect(receipt.upiAmount).toBe(150);
+    expect(b.paymentReceived).toBe(250);expect(receipt.cashAmount).toBe(100);expect(receipt.upiAmount).toBe(150);expect(receipt.provider).toBe("manual");
     await assertFails(updateDoc(doc(session.db,"payments",b.lastPaymentId),{amount:1}));
     auth("customer");await assertFails(updateDoc(doc(session.db,"bookings",created.id),{rescheduleAllowance:100}));
   });
@@ -432,6 +432,23 @@ describe("prepaid operations and consecutive passes",()=>{
     b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;expect(b.paymentReceived).toBe(0);
     await expect(reversePayment(original,"Again")).rejects.toThrow("already reversed");
     auth("reception");await expect(recordAttendance(created.id,"in")).rejects.toThrow("Full advance");
+  });
+  it("keeps private promotions staff-only and enforces coupon uses per customer",async()=>{
+    await seed("coupons/ONCE",{code:"ONCE",type:"fixed",value:50,active:true,visibleToUsers:true,maxUsesPerCustomer:1});
+    await seed("coupons/STAFF",{code:"STAFF",type:"percent",value:10,active:true,visibleToUsers:false,maxUsesPerCustomer:1});
+    let db=auth("customer");
+    await assertSucceeds(getDoc(doc(db,"coupons/ONCE")));
+    await assertFails(getDoc(doc(db,"coupons/STAFF")));
+    const first=await createBooking(booking({discount:50,total:200,couponId:"ONCE",couponCode:"ONCE"}));
+    db=auth("reception");
+    await assertSucceeds(getDoc(doc(db,"coupons/STAFF")));
+    await collectPayment(first.id,{cash:200,upi:0,other:0,reference:""});
+    expect((await getDoc(doc(db,"couponRedemptions/ONCE_customer"))).data()?.count).toBe(1);
+    auth("customer");
+    const date=addDays(today,1);
+    const second=await createBooking(booking({date,endDate:date,inventoryId:"desk-D02",inventoryIds:["desk-D02"],discount:50,total:200,couponId:"ONCE",couponCode:"ONCE"}));
+    auth("reception");
+    await expect(collectPayment(second.id,{cash:200,upi:0,other:0,reference:""})).rejects.toThrow("maximum");
   });
 });
 

@@ -19,7 +19,7 @@ import {
 import { auth, db } from "../firebase";
 import { DEFAULT_POLICY, officeHours, consecutiveDates, PASS_ALLOWANCES, cancellationQuote, timeAt, validatePolicy, minutes } from "./business";
 import { collectPayment, processRefund } from "./finance";
-import { normalizeEmail, validateCustomer } from "./customer";
+import { ageFromDob, normalizeEmail, validateCustomer } from "./customer";
 import { localToday, dateSpan } from "../pages/types";
 import {
   ADMIN_EMAILS,
@@ -128,18 +128,18 @@ export function watchBookingLocks(
     (e) => onError?.(e),
   );
 }
-export function watchOffers(email: string, cb: (o: Offer[]) => void) {
-  return onSnapshot(
-    query(collection(db, "offers"), where("active", "==", true), limit(100)),
-    (s) => {
-      const e = lower(email);
-      cb(
-        s.docs
-          .map((d) => ({ id: d.id, ...d.data() }) as Offer)
-          .filter((o) => o.targetType === "all" || lower(o.targetEmail) === e),
-      );
-    },
-  );
+export function watchOffers(email: string, cb: (o: Offer[]) => void, onError?: (e:any)=>void) {
+  const groups:any[][]=[[],[]], e=lower(email);
+  const queries=[
+    query(collection(db,"offers"),where("visibleToUsers","==",true),where("targetType","==","all"),limit(100)),
+    query(collection(db,"offers"),where("visibleToUsers","==",true),where("targetEmail","==",e||"__none__"),limit(100)),
+  ];
+  const emit=()=>cb([...new Map(groups.flat().filter(o=>o.active!==false).map(o=>[o.id,o])).values()].sort(sortNewest));
+  const stops=queries.map((q,index)=>onSnapshot(q,s=>{groups[index]=s.docs.map(d=>({id:d.id,...d.data()}));emit();},e=>onError?.(e)));
+  return ()=>stops.forEach(stop=>stop());
+}
+export function watchAllOffers(cb:(o:any[])=>void,onError?: (e:any)=>void){
+  return onSnapshot(query(collection(db,"offers"),limit(200)),s=>cb(s.docs.map(d=>({id:d.id,...d.data()})).sort(sortNewest)),e=>onError?.(e));
 }
 export function watchRoleAssignment(email: string, cb: (a: any) => void) {
   return onSnapshot(
@@ -251,12 +251,16 @@ export function watchResourceBlocksRange(
 export function watchCoupons(
   cb: (items: any[]) => void,
   onError?: (e: any) => void,
+  publicOnly = false,
 ) {
   return onSnapshot(
-    query(collection(db, "coupons"), limit(200)),
+    publicOnly ? query(collection(db,"coupons"),where("visibleToUsers","==",true),limit(200)) : query(collection(db, "coupons"), limit(200)),
     (s) => cb(s.docs.map((d) => ({ id: d.id, ...d.data() })).sort(sortNewest)),
     (e) => onError?.(e),
   );
+}
+export function watchCouponRedemptions(userId:string,cb:(items:any[])=>void,onError?: (e:any)=>void){
+  return onSnapshot(query(collection(db,"couponRedemptions"),where("userId","==",userId),limit(200)),s=>cb(s.docs.map(d=>({id:d.id,...d.data()}))),e=>onError?.(e));
 }
 export function watchMembershipPlans(
   cb: (items: any[]) => void,
@@ -316,6 +320,7 @@ export async function createCustomerProfile(
       return { id: prior.id, ...prior.data(), alreadyExists: true };
     const payload = {
       ...value,
+      age:ageFromDob(value.dob,localToday()),
       uid: ref.id,
       role: "User",
       createdFrom: "staff_walk_in",
@@ -412,7 +417,8 @@ export async function ensureUser(u: any) {
       uid: u.uid,
       email,
       name: u.displayName || d.name || email.split("@")[0],
-      photoURL: u.photoURL || d.photoURL || "",
+      // Keep a customer-selected photo instead of replacing it with the Google image at every sign-in.
+      photoURL: d.photoURL || u.photoURL || "",
       ...(s.exists() ? {} : { role }),
       updatedAt: serverTimestamp(),
     },
@@ -566,7 +572,7 @@ export async function loadCompanySettings() {
       };
 }
 export async function saveCompanySettings(data: any) {
-  await setDoc(doc(db, "settings", "company"), clean(data), { merge: true });
+  await setDoc(doc(db, "settings", "company"), clean({...data,updatedAt:serverTimestamp()}), { merge: true });
 }
 export function watchHolidays(
   cb: (items: any[]) => void,
@@ -882,26 +888,44 @@ export async function removeAdmin(
   );
 }
 export async function createOffer(data: any, uid: string) {
+  if(!String(data.title||"").trim())throw Error("Offer title is required.");
+  if(!Number.isFinite(Number(data.value))||Number(data.value)<=0||data.type==="percent"&&Number(data.value)>100)throw Error("Enter a valid offer discount.");
+  if(data.targetType==="email"&&!validEmailAddress(data.targetEmail))throw Error("Enter a valid customer email for this offer.");
   await addDoc(collection(db, "offers"), {
     ...data,
+    title:String(data.title).trim(),
+    description:String(data.description||"").trim(),
     value: Number(data.value),
     targetEmail: data.targetType === "email" ? lower(data.targetEmail) : "",
     active: true,
+    visibleToUsers: data.visibleToUsers !== false,
     createdBy: uid,
     createdAt: serverTimestamp(),
   });
+}
+const validEmailAddress=(value:any)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lower(value));
+export async function toggleOffer(id:string,active:boolean,uid:string){
+  await updateDoc(doc(db,"offers",id),{active,updatedBy:uid,updatedAt:serverTimestamp()});
+}
+export async function setOfferVisibility(id:string,visibleToUsers:boolean,uid:string){
+  await updateDoc(doc(db,"offers",id),{visibleToUsers,updatedBy:uid,updatedAt:serverTimestamp()});
 }
 export async function createCoupon(data: any, uid: string) {
   const code = String(data.code || "")
     .trim()
     .toUpperCase();
-  if (!code) throw Error("Coupon code is required.");
+  if (!/^[A-Z0-9_-]{3,24}$/.test(code)) throw Error("Use 3–24 letters, numbers, dashes or underscores for the coupon code.");
+  const value=Number(data.value||0), maxUsesPerCustomer=Number(data.maxUsesPerCustomer??data.maxUses??1);
+  if(!Number.isFinite(value)||value<=0||data.type==="percent"&&value>100)throw Error("Enter a valid coupon discount.");
+  if(!Number.isInteger(maxUsesPerCustomer)||maxUsesPerCustomer<1||maxUsesPerCustomer>100)throw Error("Uses per customer must be between 1 and 100.");
   await setDoc(
     doc(db, "coupons", code),
     {
-      code,
       ...data,
-      value: Number(data.value || 0),
+      code,
+      value,
+      maxUsesPerCustomer,
+      visibleToUsers:data.visibleToUsers===true,
       active: data.active !== false,
       createdBy: uid,
       createdAt: serverTimestamp(),
@@ -915,6 +939,9 @@ export async function toggleCoupon(id: string, active: boolean, uid: string) {
     updatedBy: uid,
     updatedAt: serverTimestamp(),
   });
+}
+export async function setCouponVisibility(id:string,visibleToUsers:boolean,uid:string){
+  await updateDoc(doc(db,"coupons",id),{visibleToUsers,updatedBy:uid,updatedAt:serverTimestamp()});
 }
 export async function createMembershipPlan(data: any, uid: string) {
   const days=Number(data.deskDays || data.days);
@@ -1232,12 +1259,14 @@ export async function createBooking(input: {
   total: number;
   offerId?: string | null;
   couponCode?: string;
+  couponId?: string;
   membershipId?: string;
   referralCode?: string;
   status?: "Pending" | "Confirmed";
   addons?: any[];
   amenities?: string[];
   notes?: string;
+  checkoutChannel?: "whatsapp" | "staff_manual";
 }) {
   const policyDoc = await getDoc(doc(db,"settings","policy"));
   const policy:any = { ...DEFAULT_POLICY, ...policyDoc.data() };
