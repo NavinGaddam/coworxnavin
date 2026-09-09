@@ -1,0 +1,620 @@
+/* =========================================================================
+   NAV / PROFILE-BUTTON / PROFILE-MODAL FIX
+   Consolidates rules that were previously duplicated 2-7x across
+   branding.css, repair.css, mobile.css, ui-fixes.css and
+   booking-enhancements.css with conflicting values. This file is the
+   single source of truth for these three components — do not add
+   further overrides for them in other stylesheets.
+   Selectors are prefixed with ".app" to safely out-specificity the old
+   0,1,0-specificity !important rules regardless of CSS load order.
+   ========================================================================= */
+
+/* ---------- Real logo (replaces old CSS-generated text wordmark) ---------- */
+.app .brand{
+  display:flex!important;
+  align-items:center!important;
+  width:auto!important;
+  min-width:0!important;
+  height:auto!important;
+  padding:0!important;
+  margin:0!important;
+  background:transparent!important;
+  border:0!important;
+}
+.app .brandLogoImg{
+  height:44px!important;
+  width:auto!important;
+  max-width:none!important;
+  display:block!important;
+  object-fit:contain!important;
+}
+@media (max-width:900px){
+  .app .brandLogoImg{height:38px!important}
+}
+@media (max-width:620px){
+  .app .brandLogoImg{height:34px!important}
+}
+
+/* Primary buttons now sit on the logo's true orange; force readable
+   white text/icon regardless of which older rule wins the cascade. */
+.app .primary{
+  background:var(--accent)!important;
+  border-color:var(--accent)!important;
+  color:#fff!important;
+}
+.app .primary:hover{filter:brightness(1.06)!important}
+
+/* ---------- Mobile menu: clean slide-in drawer with backdrop ----------
+   Previously .mobileMenu was defined 6 different times across mobile.css
+   and repair.css (some hiding it, some floating it top-right with no
+   backdrop), so it rendered as a small box floating over page content
+   instead of a real drawer. This is now the single definition. */
+.app .mobileMenuScrim{
+  position:fixed!important;inset:0!important;z-index:98!important;
+  background:rgba(4,7,11,.55)!important;backdrop-filter:blur(2px)!important;
+  opacity:0!important;visibility:hidden!important;pointer-events:none!important;
+  transition:opacity .2s ease,visibility .2s!important;
+}
+.app .mobileMenuScrim.open{opacity:1!important;visibility:visible!important;pointer-events:auto!important}
+.app .mobileMenu{
+  position:fixed!important;top:0!important;right:0!important;bottom:0!important;left:auto!important;
+  z-index:99!important;width:min(320px,84vw)!important;height:100vh!important;max-height:none!important;
+  display:flex!important;flex-direction:column!important;gap:3px!important;
+  padding:14px!important;overflow:auto!important;box-sizing:border-box!important;
+  background:var(--card)!important;border:0!important;border-left:1px solid var(--line)!important;
+  border-radius:0!important;box-shadow:-24px 0 60px rgba(0,0,0,.35)!important;
+  transform:translateX(100%)!important;transition:transform .22s ease!important;
+  opacity:1!important;visibility:visible!important;pointer-events:auto!important;
+}
+.app .mobileMenu.open{transform:translateX(0)!important}
+.app .mobileMenuHead{
+  display:flex!important;align-items:center!important;justify-content:space-between!important;
+  padding-bottom:12px!important;margin-bottom:6px!important;border-bottom:1px solid var(--line)!important;
+}
+.app .mobileMenuHead button{
+  width:34px!important;height:34px!important;display:grid!important;place-items:center!important;
+  border:1px solid var(--line)!important;border-radius:9px!important;background:var(--soft)!important;color:var(--text)!important;
+}
+.app .mobileMenu>button{
+  height:46px!important;padding:0 14px!important;border:0!important;border-radius:11px!important;
+  background:transparent!important;color:var(--text)!important;font-size:15px!important;font-weight:700!important;
+  text-align:left!important;
+}
+.app .mobileMenu>button:hover,.app .mobileMenu>button.navActive{background:var(--soft)!important;color:var(--accent)!important}
+.app .mobileMenu>button.navActive::after{display:none!important}
+.app .mobileMenuFoot{margin-top:auto!important;padding-top:14px!important;border-top:1px solid var(--line)!important;display:flex!important;flex-direction:column!important;gap:10px!important}
+.app .mobileMenuAccount b{display:block!important;font-size:13px!important;color:var(--text)!important}
+.app .mobileMenuAccount small{font-size:11px!important;color:var(--muted)!important;overflow-wrap:anywhere!important}
+.app .mobileSignOut{
+  display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;
+  height:44px!important;border:1px solid rgba(224,85,77,.35)!important;border-radius:11px!important;
+  background:rgba(224,85,77,.1)!important;color:#e0554d!important;font-weight:800!important;font-size:13px!important;
+}
+
+/* ---------- Booking modal error message: had zero CSS anywhere, so
+   validation errors like "missing mobile number" were rendering with
+   no visible styling. ---------- */
+.app .modalError{
+  display:flex!important;align-items:center!important;gap:9px!important;
+  margin-top:14px!important;padding:12px 14px!important;border-radius:11px!important;
+  border:1px solid rgba(224,85,77,.4)!important;background:rgba(224,85,77,.12)!important;
+  color:#ff8a80!important;font-size:13px!important;font-weight:700!important;
+}
+.app .modalError::before{content:"⚠";flex:0 0 auto!important}
+
+/* ---------- Walk-in customer picker dropdown ---------- */
+.app .custPickerWrap{position:relative!important}
+.app .custDropdown{
+  position:absolute!important;top:calc(100% + 4px)!important;left:0!important;right:0!important;z-index:20!important;
+  max-height:220px!important;overflow:auto!important;padding:6px!important;
+  border:1px solid var(--line)!important;border-radius:12px!important;background:var(--card)!important;
+  box-shadow:0 20px 50px rgba(0,0,0,.3)!important;
+}
+.app .custDropdown button{
+  display:flex!important;flex-direction:column!important;gap:2px!important;width:100%!important;
+  padding:9px 10px!important;border:0!important;border-radius:9px!important;background:transparent!important;
+  color:var(--text)!important;text-align:left!important;
+}
+.app .custDropdown button:hover{background:var(--soft)!important}
+.app .custDropdown button b{font-size:13px!important}
+.app .custDropdown button span{font-size:11px!important;color:var(--muted)!important}
+.app .custNewHint{display:flex!important;align-items:center!important;gap:7px!important;padding:9px 10px!important;font-size:12px!important;color:var(--muted)!important}
+.app .custAddNewBtn{display:flex!important;align-items:center!important;gap:8px!important;width:100%!important;margin-top:4px!important;padding:10px!important;border:1px dashed rgba(228,181,28,.5)!important;border-radius:9px!important;background:rgba(228,181,28,.08)!important;color:#b18400!important;font-weight:800!important;font-size:12px!important;text-align:left!important}
+.app .custAddNewBtn:hover{background:rgba(228,181,28,.16)!important}
+.app .standaloneRangeSummary{display:flex!important;align-items:center!important;gap:8px!important;padding:10px 2px 16px!important;color:var(--accent)!important;border-bottom:1px solid var(--line)!important;margin-bottom:16px!important}
+.app .standaloneRangeSummary strong{font-size:13px!important;color:var(--text)!important}
+.app .standaloneRangeSummary small{color:var(--muted)!important;font-size:11px!important}
+.app .wednesdayNotice{display:flex!important;gap:10px!important;align-items:flex-start!important;padding:12px 14px!important;margin-bottom:16px!important;border-radius:13px!important;border:1px solid rgba(58,134,232,.3)!important;background:rgba(58,134,232,.08)!important;color:#5b9be0!important}
+.app .wednesdayNotice svg{flex:none!important;margin-top:2px!important}
+.app .wednesdayNotice b{display:block!important;font-size:12.5px!important;color:var(--text)!important;margin-bottom:3px!important}
+.app .wednesdayNotice span{font-size:11.5px!important;color:var(--muted)!important;line-height:1.5!important}
+.app .wednesdayNotice.holidayNotice{border-color:rgba(224,98,95,.35)!important;background:rgba(224,98,95,.08)!important;color:#e0625f!important}
+
+.app .dateRangeRow{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important}
+.app .dateRangeRow label{display:grid!important;gap:5px!important;font-size:11px!important;font-weight:700!important;color:var(--muted)!important}
+.app .dateRangeRow input{width:100%!important;box-sizing:border-box!important}
+
+/* ---------- Operations overview hero: Live now / Attention needed / Today ---------- */
+.app .opsHero{
+  display:grid!important;
+  grid-template-columns:1fr 1.4fr 1fr!important;
+  gap:0!important;
+  border:1px solid var(--line)!important;
+  border-radius:18px!important;
+  background:var(--card)!important;
+  box-shadow:var(--shadow)!important;
+  margin-bottom:20px!important;
+  overflow:hidden!important;
+}
+.app .opsHeroCol{padding:20px 22px!important;border-left:1px solid var(--line)!important}
+.app .opsHeroCol:first-child{border-left:0!important}
+.app .opsHeroStats{display:flex!important;gap:20px!important;margin-top:12px!important;flex-wrap:wrap!important}
+.app .opsHeroStats div{display:flex!important;flex-direction:column!important;gap:2px!important}
+.app .opsHeroStats strong{font-size:26px!important;line-height:1!important}
+.app .opsHeroStats span{font-size:11px!important;color:var(--muted)!important}
+.app .opsAttention{list-style:none!important;margin:12px 0 0!important;padding:0!important;display:flex!important;flex-direction:column!important;gap:9px!important}
+.app .opsAttention li{display:flex!important;align-items:center!important;gap:9px!important;font-size:13px!important;color:var(--text)!important}
+.app .opsAttention i{width:8px!important;height:8px!important;border-radius:50%!important;flex:0 0 8px!important;background:var(--muted)!important}
+.app .opsAttention li.warn i{background:#e0a52c!important}
+.app .opsAttention li.info i{background:var(--blue)!important}
+.app .opsAttention li.danger i{background:#e0554d!important}
+.app .opsAttentionEmpty{display:flex!important;align-items:center!important;gap:7px!important;margin-top:12px!important;font-size:13px!important;color:var(--muted)!important}
+.app .opsHeroToday{display:grid!important;grid-template-columns:auto auto!important;column-gap:14px!important;row-gap:2px!important;margin-top:12px!important;align-items:baseline!important}
+.app .opsHeroToday strong{font-size:20px!important}
+.app .opsHeroToday small{font-size:11px!important;color:var(--muted)!important}
+@media (max-width:900px){
+  .app .opsHero{grid-template-columns:1fr!important}
+  .app .opsHeroCol{border-left:0!important;border-top:1px solid var(--line)!important}
+  .app .opsHeroCol:first-child{border-top:0!important}
+}
+
+/* ---------- Offers & Memberships page: sections had zero gap between
+   them and membership items had no padding/card styling ---------- */
+.app main.simple{padding:32px 24px!important;max-width:960px!important;margin:0 auto!important}
+.app main.simple>h2{margin:6px 0 24px!important}
+.app .offerCards{margin-bottom:26px!important}
+.app .membershipPublic{
+  margin-top:6px!important;padding:24px!important;border:1px solid var(--line)!important;
+  border-radius:18px!important;background:var(--card)!important;box-shadow:var(--shadow)!important;
+}
+.app .membershipPublic>div>p{margin:6px 0 0!important;color:var(--muted)!important;font-size:13px!important}
+.app .membershipGrid{
+  display:grid!important;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))!important;
+  gap:14px!important;margin-top:18px!important;
+}
+.app .membershipGrid article{
+  display:grid!important;gap:6px!important;padding:18px!important;
+  border:1px solid var(--line)!important;border-radius:14px!important;background:var(--soft)!important;
+}
+.app .membershipGrid article b{font-size:15px!important;color:var(--text)!important}
+.app .membershipGrid article span{font-size:12px!important;color:var(--muted)!important;line-height:1.5!important}
+.app .membershipGrid article strong{font-size:19px!important;color:var(--accent)!important;margin-top:2px!important}
+.app .membershipGrid article small{font-size:11px!important;color:var(--muted)!important}
+
+/* ---------- Create-offer form: was a rigid 4-column grid that squeezed
+   the title input and wrapped the description into an unreadable
+   narrow column. Reflowed into title/discount/audience + a full-width
+   description row, using CSS order so no TSX changes were needed. ---------- */
+.app .offerFormGrid{
+  display:grid!important;
+  grid-template-columns:1fr 1fr 1fr!important;
+  gap:16px!important;
+  align-items:start!important;
+}
+.app .offerFormGrid>label:nth-child(1){order:1!important}
+.app .offerFormGrid>label:nth-child(3){order:2!important}
+.app .offerFormGrid>label:nth-child(4){order:3!important}
+.app .offerFormGrid>label:nth-child(2){order:4!important;grid-column:1/-1!important}
+.app .offerFormGrid>label.full{order:5!important;grid-column:1/-1!important}
+.app .offerFormGrid label{display:grid!important;gap:7px!important;font-size:11px!important;font-weight:800!important;color:var(--muted)!important;text-transform:uppercase!important;letter-spacing:.6px!important}
+.app .offerFormGrid input,.app .offerFormGrid select,.app .offerFormGrid textarea{
+  width:100%!important;padding:12px 13px!important;border:1px solid var(--line)!important;border-radius:11px!important;
+  background:var(--soft)!important;color:var(--text)!important;outline:none!important;box-sizing:border-box!important;font-size:13px!important;
+}
+.app .offerFormGrid textarea{min-height:76px!important;resize:vertical!important}
+.app .inputPair{display:grid!important;grid-template-columns:1fr 118px!important;gap:8px!important}
+@media (max-width:760px){
+  .app .offerFormGrid{grid-template-columns:1fr!important}
+  .app .offerFormGrid>label:nth-child(1),.app .offerFormGrid>label:nth-child(3),.app .offerFormGrid>label:nth-child(4){grid-column:1/-1!important}
+}
+
+/* ---------- Home screen: greeting, next booking, live status, offer teaser ---------- */
+.app .bannerStrip{display:grid!important;gap:10px!important;margin:14px 4% 0!important}
+.app .bannerCard{display:flex!important;align-items:flex-start!important;gap:11px!important;padding:13px 15px!important;border-radius:14px!important;border:1px solid var(--line)!important;background:var(--card)!important;box-shadow:0 8px 24px rgba(0,0,0,.08)!important}
+.app .bannerCard .bannerIcon{width:32px!important;height:32px!important;flex:none!important;border-radius:10px!important;display:grid!important;place-items:center!important;background:rgba(228,181,28,.14)!important;color:#b18400!important}
+.app .bannerCard div{display:grid!important;gap:2px!important;flex:1!important}
+.app .bannerCard b{font-size:13px!important;color:var(--text)!important}
+.app .bannerCard span{font-size:12px!important;color:var(--muted)!important;line-height:1.5!important}
+.app .bannerCard button.bannerDismiss{flex:none!important;background:transparent!important;border:0!important;color:var(--muted)!important;padding:4px!important}
+.app .bannerCard-offer .bannerIcon{background:rgba(228,181,28,.16)!important;color:#b18400!important}
+.app .bannerCard-reminder .bannerIcon{background:rgba(58,134,232,.14)!important;color:#3a86e8!important}
+.app .bannerCard-instruction .bannerIcon{background:rgba(120,120,120,.14)!important;color:var(--muted)!important}
+.app .bannerCard-holiday{border-color:rgba(224,98,95,.35)!important;background:rgba(224,98,95,.06)!important}
+.app .bannerCard-holiday .bannerIcon{background:rgba(224,98,95,.16)!important;color:#e0625f!important}
+.app .homeGreeting{
+  border:1px solid var(--line)!important;
+  border-radius:20px!important;
+  background:var(--card)!important;
+  box-shadow:var(--shadow)!important;
+  padding:24px!important;
+  margin-bottom:36px!important;
+  animation:coworxFadeIn .35s ease both!important;
+}
+.app .homeGreeting h2{margin:6px 0 0!important;font-size:24px!important;letter-spacing:-.02em!important}
+.app .quickPickRow{display:flex!important;gap:10px!important;flex-wrap:wrap!important;margin:16px 0 20px!important}
+.app .quickPick{
+  display:flex!important;align-items:center!important;gap:8px!important;
+  padding:10px 16px!important;border:1px solid var(--line)!important;border-radius:12px!important;
+  background:var(--soft)!important;color:var(--text)!important;font-weight:700!important;font-size:13px!important;
+  transition:transform .14s ease,border-color .14s ease,background .14s ease!important;
+}
+.app .quickPick:hover{border-color:var(--accent)!important;transform:translateY(-1px)!important}
+.app .homeGreetingGrid{display:grid!important;grid-template-columns:1.3fr 1fr!important;gap:14px!important}
+.app .nextBookingCard{
+  display:flex!important;align-items:center!important;justify-content:space-between!important;gap:14px!important;
+  text-align:left!important;padding:18px 20px!important;border:1px solid var(--line)!important;border-radius:16px!important;
+  background:linear-gradient(135deg,var(--soft),transparent)!important;
+  transition:border-color .16s ease,transform .16s ease!important;
+}
+.app .nextBookingCard:hover{border-color:var(--accent)!important;transform:translateY(-1px)!important}
+.app .nextBookingCard{color:var(--text)!important}
+.app .nextBookingCard .eyebrow{color:var(--accent)!important}
+.app .nextBookingCard h3{margin:5px 0 3px!important;font-size:19px!important;color:var(--text)!important}
+.app .nextBookingCard p{margin:0!important;color:var(--muted)!important;font-size:13px!important}
+.app .nextBookingCta{display:flex!important;align-items:center!important;gap:4px!important;font-size:12px!important;font-weight:800!important;color:var(--accent)!important;white-space:nowrap!important}
+.app .nextBookingEmpty{
+  display:flex!important;align-items:center!important;gap:9px!important;padding:18px 20px!important;
+  border:1px dashed var(--line)!important;border-radius:16px!important;color:var(--muted)!important;font-size:13px!important;
+}
+.app .liveStatusCard{padding:18px 20px!important;border:1px solid var(--line)!important;border-radius:16px!important;background:var(--soft)!important}
+.app .liveStatusRow{display:flex!important;align-items:baseline!important;gap:6px!important;flex-wrap:wrap!important;margin-top:10px!important}
+.app .liveStatusRow strong{font-size:20px!important}
+.app .liveStatusRow span{font-size:11px!important;color:var(--muted)!important;margin-right:8px!important}
+.app .offerTeaser{
+  display:flex!important;align-items:center!important;gap:12px!important;width:100%!important;margin-top:14px!important;
+  padding:14px 16px!important;border:1px solid rgba(255,116,32,.35)!important;border-radius:14px!important;
+  background:linear-gradient(135deg,rgba(255,116,32,.12),rgba(255,116,32,.02))!important;color:var(--text)!important;
+  transition:transform .14s ease!important;
+}
+.app .offerTeaser:hover{transform:translateY(-1px)!important}
+.app .offerTeaser svg{color:var(--accent)!important;flex:0 0 auto!important}
+.app .offerTeaser div{flex:1!important;text-align:left!important}
+.app .offerTeaser b{display:block!important;font-size:14px!important}
+.app .offerTeaser span{font-size:11px!important;color:var(--muted)!important}
+@media (max-width:700px){
+  .app .homeGreetingGrid{grid-template-columns:1fr!important}
+}
+@keyframes coworxFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* Subtle motion on existing cards, buttons */
+.app .card{transition:transform .18s ease,box-shadow .18s ease!important}
+.app button{transition:transform .12s ease,background .14s ease,border-color .14s ease,color .14s ease!important}
+.app .primary:active,.app .ghost:active,.app .quickPick:active{transform:scale(.97)!important}
+
+/* ---------- Profile dropdown menu ---------- */
+.app .profileMenuWrap{position:relative!important}
+.app .menuScrim{position:fixed!important;inset:0!important;z-index:29!important;background:transparent!important}
+.app .profileMenu{
+  position:absolute!important;top:calc(100% + 8px)!important;right:0!important;z-index:30!important;
+  width:230px!important;padding:8px!important;border:1px solid var(--line)!important;border-radius:14px!important;
+  background:var(--card)!important;box-shadow:0 20px 50px rgba(0,0,0,.28)!important;
+  display:flex!important;flex-direction:column!important;gap:2px!important;
+  animation:coworxFadeIn .14s ease both!important;
+}
+.app .profileMenuHead{padding:8px 10px 10px!important;border-bottom:1px solid var(--line)!important;margin-bottom:4px!important}
+.app .profileMenuHead b{display:block!important;font-size:13px!important;color:var(--text)!important}
+.app .profileMenuHead small{font-size:11px!important;color:var(--muted)!important;overflow-wrap:anywhere!important}
+.app .profileMenu button{
+  display:flex!important;align-items:center!important;gap:9px!important;width:100%!important;
+  padding:9px 10px!important;border:0!important;border-radius:9px!important;background:transparent!important;
+  color:var(--text)!important;font-size:13px!important;font-weight:600!important;text-align:left!important;
+}
+.app .profileMenu button:hover{background:var(--soft)!important}
+.app .profileMenu button.danger{color:#e0554d!important}
+
+/* ---------- Mobile bottom navigation ---------- */
+.app .bottomNav{
+  position:fixed!important;left:0!important;right:0!important;bottom:0!important;z-index:25!important;
+  display:flex!important;background:var(--card)!important;border-top:1px solid var(--line)!important;
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom))!important;
+  backdrop-filter:blur(14px)!important;-webkit-backdrop-filter:blur(14px)!important;
+}
+.app .bottomNav button{
+  flex:1 1 0!important;display:flex!important;flex-direction:column!important;align-items:center!important;gap:3px!important;
+  padding:6px 2px!important;border:0!important;background:transparent!important;color:var(--muted)!important;
+}
+.app .bottomNav button span{font-size:10px!important;font-weight:700!important}
+.app .bottomNav button.navActive{color:var(--accent)!important}
+.app .bottomNav button.navActive::after{display:none!important}
+@media (max-width:900px){
+  .app{padding-bottom:64px!important}
+}
+
+/* ---------- Header ---------- */
+.app header{
+  height:72px!important;
+  padding:0 24px!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:20px!important;
+  background:var(--bg)!important;
+  border-bottom:1px solid var(--line)!important;
+  box-sizing:border-box!important;
+  position:sticky!important;
+  top:0!important;
+  z-index:20!important;
+  backdrop-filter:blur(14px)!important;
+  -webkit-backdrop-filter:blur(14px)!important;
+}
+
+/* ---------- Desktop nav + "which tab am I on" indicator ---------- */
+.app .desktopNav{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:4px!important;
+  flex:1 1 auto!important;
+  min-width:0!important;
+}
+.app .desktopNav button{
+  height:40px!important;
+  padding:0 14px!important;
+  border:1px solid transparent!important;
+  border-radius:10px!important;
+  background:transparent!important;
+  color:var(--muted)!important;
+  font-size:14px!important;
+  font-weight:700!important;
+  white-space:nowrap!important;
+  position:relative!important;
+  transition:background .16s ease,color .16s ease!important;
+}
+.app .desktopNav button:hover{
+  color:var(--text)!important;
+  background:var(--soft)!important;
+}
+/* Single, unambiguous "current tab" style: filled pill + accent underline */
+.app .desktopNav .navActive,
+.app .mobileMenu .navActive{
+  color:var(--text)!important;
+  background:var(--soft)!important;
+  border-color:var(--line)!important;
+  font-weight:800!important;
+  box-shadow:none!important;
+}
+.app .desktopNav .navActive::after{
+  content:"";
+  position:absolute;
+  left:14px;
+  right:14px;
+  bottom:-1px;
+  height:2px;
+  border-radius:2px;
+  background:var(--accent);
+}
+.app .desktopNav .staffNav{
+  color:var(--muted)!important;
+  background:transparent!important;
+}
+.app .desktopNav .staffNav:hover{
+  color:var(--text)!important;
+  background:var(--soft)!important;
+}
+.app .desktopNav .staffNav:nth-last-child(3){margin-left:12px!important}
+@media (max-width:900px){
+  .app .desktopNav{display:none!important}
+}
+
+/* ---------- Mobile menu, same active-tab treatment ---------- */
+.app .mobileMenu button.navActive{position:relative!important;padding-left:24px!important}
+.app .mobileMenu button.navActive::before{
+  content:"";
+  position:absolute;
+  left:10px;top:50%;
+  width:6px;height:6px;
+  border-radius:50%;
+  background:var(--accent);
+  transform:translateY(-50%);
+}
+
+/* ---------- Email / profile button ----------
+   Previously forced to a 42x42 icon-only square with the email text
+   permanently hidden (span{display:none!important}). Now shows the
+   truncated email on tablet/desktop and collapses to icon-only only
+   on genuinely narrow phones. */
+.app .profileChip{
+  cursor:pointer!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:7px!important;
+  height:40px!important;
+  max-width:220px!important;
+  padding:0 14px!important;
+  border:1px solid var(--line)!important;
+  border-radius:11px!important;
+  background:var(--soft)!important;
+  color:var(--text)!important;
+  font:inherit!important;
+  font-size:12px!important;
+  font-weight:700!important;
+  white-space:nowrap!important;
+  box-shadow:none!important;
+}
+.app .profileChip:hover{
+  background:var(--card)!important;
+  border-color:var(--accent)!important;
+}
+.app .profileChip span{
+  display:inline-block!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+  max-width:160px!important;
+}
+@media (max-width:480px){
+  .app .profileChip{
+    width:40px!important;
+    min-width:40px!important;
+    max-width:40px!important;
+    padding:0!important;
+    justify-content:center!important;
+  }
+  .app .profileChip span{display:none!important}
+}
+
+/* ---------- Profile settings modal ----------
+   Card/head/grid/footer used to be defined twice at the base level
+   with different sizes; this is now the single definition, with a
+   media query handling the mobile layout instead of a second
+   conflicting base rule. */
+.app .profileSettingsBackdrop{
+  position:fixed!important;
+  inset:0!important;
+  display:grid!important;
+  place-items:center!important;
+  padding:24px!important;
+  background:rgba(4,7,11,.76)!important;
+  backdrop-filter:blur(14px)!important;
+  -webkit-backdrop-filter:blur(14px)!important;
+  z-index:1000!important;
+  overflow:auto!important;
+  box-sizing:border-box!important;
+}
+.app .profileSettingsCard{
+  position:relative!important;
+  width:min(640px,calc(100vw - 40px))!important;
+  max-height:min(760px,calc(100vh - 48px))!important;
+  overflow:auto!important;
+  margin:auto!important;
+  padding:28px!important;
+  border:1px solid var(--line)!important;
+  border-radius:20px!important;
+  background:var(--card)!important;
+  color:var(--text)!important;
+  box-shadow:0 40px 120px rgba(0,0,0,.45)!important;
+  box-sizing:border-box!important;
+}
+.app .profileSettingsHead{
+  position:relative!important;
+  display:block!important;
+  padding-right:56px!important;
+  margin-bottom:20px!important;
+}
+.app .profileSettingsHead h3{
+  font-size:24px!important;
+  line-height:1.15!important;
+  margin:4px 0 8px!important;
+  color:var(--text)!important;
+}
+.app .profileSettingsHead p{
+  font-size:13px!important;
+  line-height:1.6!important;
+  margin:0!important;
+  color:var(--muted)!important;
+  max-width:520px!important;
+}
+.app .profileSettingsHead>button{
+  position:absolute!important;
+  top:0!important;
+  right:0!important;
+  width:38px!important;
+  height:38px!important;
+  display:grid!important;
+  place-items:center!important;
+  border:1px solid var(--line)!important;
+  border-radius:10px!important;
+  background:var(--soft)!important;
+  color:var(--text)!important;
+  font-weight:700!important;
+  padding:0!important;
+}
+.app .profileSettingsHead>button:hover{
+  border-color:var(--accent)!important;
+  color:var(--accent)!important;
+}
+.app .profileIdentity{
+  display:grid!important;
+  gap:3px!important;
+  padding:14px 16px!important;
+  margin:0 0 20px!important;
+  border:1px solid var(--line)!important;
+  border-radius:14px!important;
+  background:var(--soft)!important;
+}
+.app .profileIdentity strong{font-size:15px!important;color:var(--text)!important}
+.app .profileIdentity span{font-size:12px!important;color:var(--muted)!important;overflow-wrap:anywhere!important}
+.app .profileSettingsGrid{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:14px!important;
+  width:100%!important;
+}
+.app .profileSettingsGrid label{
+  display:grid!important;
+  gap:7px!important;
+  color:var(--muted)!important;
+  font-size:12px!important;
+  font-weight:700!important;
+}
+.app .profileSettingsGrid input,
+.app .profileSettingsGrid select{
+  width:100%!important;
+  height:46px!important;
+  padding:0 13px!important;
+  border:1px solid var(--line)!important;
+  border-radius:12px!important;
+  background:var(--soft)!important;
+  color:var(--text)!important;
+  outline:none!important;
+  font:inherit!important;
+  font-size:13px!important;
+  box-sizing:border-box!important;
+}
+.app .profileSettingsGrid input:focus,
+.app .profileSettingsGrid select:focus{
+  border-color:var(--accent)!important;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)!important;
+}
+.app .profileSettingsFooter{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:18px!important;
+  margin-top:22px!important;
+  padding-top:18px!important;
+  border-top:1px solid var(--line)!important;
+}
+.app .profileSettingsFooter small{
+  font-size:11px!important;
+  line-height:1.45!important;
+  color:var(--muted)!important;
+  max-width:400px!important;
+}
+.app .profileSettingsFooter .primary{
+  height:44px!important;
+  padding:0 18px!important;
+  border-radius:11px!important;
+  font-size:13px!important;
+  font-weight:800!important;
+  white-space:nowrap!important;
+}
+@media (max-width:640px){
+  .app .profileSettingsBackdrop{padding:14px!important}
+  .app .profileSettingsCard{
+    width:min(560px,calc(100vw - 28px))!important;
+    max-height:calc(100vh - 28px)!important;
+    padding:20px!important;
+    border-radius:18px!important;
+  }
+  .app .profileSettingsHead{padding-right:48px!important}
+  .app .profileSettingsHead h3{font-size:20px!important}
+  .app .profileIdentity{margin-bottom:16px!important}
+  .app .profileSettingsGrid{grid-template-columns:1fr!important;gap:12px!important}
+  .app .profileSettingsFooter{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:12px!important;
+  }
+  .app .profileSettingsFooter small{max-width:none!important}
+  .app .profileSettingsFooter .primary{width:100%!important}
+}
