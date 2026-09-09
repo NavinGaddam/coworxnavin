@@ -1,36 +1,204 @@
-import {useEffect,useMemo,useState} from "react";
-import {CalendarCheck,ChevronDown,Home as HomeIcon,LogIn,LogOut,Menu,Settings2,ShieldCheck,Tag,X} from "lucide-react";
-import {GoogleAuthProvider,onAuthStateChanged,signInWithPopup,signOut} from "firebase/auth";
-import {doc,updateDoc} from "firebase/firestore";
-import {auth,db,isFirebaseConfigured} from "./firebase";
-import {DEFAULT_PRICING,Role,Space,Booking,today,addHours,withinBusinessHours,BUSINESS_START,BUSINESS_END} from "./pages/types";
-import {ensureUser,backfillUserBookings,loadPricing,savePricing,assignManager,removeManager,addAdmin,removeAdmin,acceptManager,createOffer,confirmBooking,revokeBooking,cancelBooking,createBooking,watchBanners,loadCompanySettings,loadWifi,loadUpi,loadPricing as _loadPricing} from "./lib/firestore";
-import {nowInRange} from "./pages/types";
-import Home from "./pages/Home";import BookingPage from "./pages/Booking";import Amenities from "./pages/Amenities";import {Account,OffersPage,ManagerPage,AdminPage,LoginPage} from "./pages/Other";
+import React, { useEffect, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "./firebase";
+import { Role, Space, Booking, today } from "./pages/types";
+import Home from "./pages/Home";
+import BookingPage from "./pages/Booking";
+import { Account, AdminPage } from "./pages/Other";
 import coworxLogoFull from "./assets/coworx-logo-full.png";
-import "./styles.css";import "./mobile.css";import "./branding.css";
-const active=(l:any)=>l.status==="Confirmed"||(l.status==="Pending"&&(l.expiresAt?.toMillis?.()||0)>Date.now());
-const maxHours=(locks:any[],space:Space,start:string)=>{let n=0;for(let i=0;i<10;i++){const slot=addHours(start,i);if(slot>=BUSINESS_END||locks.some(l=>l.inventoryId===space&&active(l)&&l.start===slot))break;n++;}return n};
-const Logo=()=> <img className="brandLogoImg" src={coworxLogoFull} alt="coworx central" />;
-export default function App(){
- const [user,setUser]=useState<any>(null),[role,setRole]=useState<Role>("User"),[page,setPage]=useState("home"),[menuOpen,setMenuOpen]=useState(false),[isMobile,setIsMobile]=useState(()=>typeof window!="undefined"&&window.matchMedia?.("(max-width:900px)")?.matches||false);
- const [profileOpen,setProfileOpen]=useState(false),[profileForm,setProfileForm]=useState<any>({mobile:"",gender:"",dob:"",profession:""}),[profileSaving,setProfileSaving]=useState(false);
- useEffect(()=>{if(!user){setProfileForm({mobile:"",gender:"",dob:"",profession:""});return}let cancelled=false;loadUserProfile(user.uid).then(d=>{if(cancelled||!d)return;setProfileForm(x=>({...x,...d}));});return()=>{cancelled=true}},[user]);
- const onProfileSaved=(data:any)=>setProfileForm((x:any)=>({...x,...data}));
- const [profileMenuOpen,setProfileMenuOpen]=useState(false);
- useEffect(()=>{if(!user){setProfileForm({mobile:"",gender:"",dob:"",profession:""});return}getUserByEmail(user.email||"").then(u=>setProfileForm({mobile:u?.phone||localStorage.getItem("coworx-phone")||"",gender:u?.gender||"",dob:u?.dob||"",profession:u?.profession||""})).catch(()=>{})},[user]);
- const [date,setDate]=useState(today()),[space,setSpace]=useState<Space>("desk"),[selectedSeats,setSelectedSeats]=useState<string[]>([]),[conf,setConf]=useState("09:00"),[meeting,setMeeting]=useState("09:00"),[confDuration,setConfDuration]=useState(1),[meetingDuration,setMeetingDuration]=useState(1),[pod,setPod]=useState("09:00"),[podDuration,setPodDuration]=useState(1);
- const [bookings,setBookings]=useState<Booking[]>([]),[staffBookings,setStaffBookings]=useState<Booking[]>([]),[pendingBookings,setPendingBookings]=useState<Booking[]>([]),[locks,setLocks]=useState<any[]>([]),[offers,setOffers]=useState<any[]>([]),[assignment,setAssignment]=useState<any>(null),[users,setUsers]=useState<any[]>([]),[admins,setAdmins]=useState<string[]>([]),[adminLogs,setAdminLogs]=useState<any[]>([]),[flash,setFlash]=useState(""),[loginError,setLoginError]=useState("");
- const [managerEmail,setManagerEmail]=useState(""),[customerEmail,setCustomerEmail]=useState(""),[phoneNumber,setPhoneNumber]=useState(()=>localStorage.getItem("coworx-phone")||""),[staffBooking,setStaffBooking]=useState(false);
- const [wifi,setWifi]=useState<any>({ssid:"",password:"",note:""}),[upi,setUpi]=useState<any>({upiId:"",merchantName:"Coworx Central"});
- const [offerForm,setOfferForm]=useState({title:"",description:"",type:"percent" as any,value:10,targetType:"all" as any,targetEmail:""});
- const [banners,setBanners]=useState<any[]>([]),[holidays,setHolidays]=useState<any[]>([]),[company,setCompany]=useState<any>({name:"Coworx Central",address:"Solapur City, Maharashtra",gstNumber:"",gstRate:18,invoicePrefix:"CC",phone:"",email:""});
- useEffect(()=>{const a=watchBanners(setBanners,()=>{}),b=watchHolidays(setHolidays,()=>{});loadCompanySettings().then(c=>{setCompany(c); (window as any)._coworx_company=c}).catch(()=>{});return()=>{a();b();}},[]);
- const activeBanners=useMemo(()=>banners.filter((b:any)=>b.active!==false&&nowInRange(b.startDate,b.endDate,b.startTime,b.endTime)),[banners]);
- useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem("coworx-theme",theme)},[theme]);
- useEffect(()=>{const mq=window.matchMedia("(max-width:900px)"),sync=()=>setIsMobile(mq.matches);sync();mq.addEventListener?.("change",sync);return()=>mq.removeEventListener?.("change",sync)},[]);
- useEffect(()=>onAuthStateChanged(auth,async u=>{setUser(u);if(!u){setRole("User");return}try{const r=await ensureUser(u);setRole(r);await backfillUserBookings(u.uid)}catch(e:any){setFlash(e?.message||"Could not load account")}}),[]);
- useEffect(()=>{_loadPricing().then(setPrices).catch(()=>{});loadWifi().then(setWifi).catch(()=>{});loadUpi().then(setUpi).catch(()=>{})},[]);
- useEffect(()=>{if(!user){setBookings([]);setOffers([]);setAssignment(null);setLocks([]);return}const a=watchUser(user.uid,user.email||"",setBookings,e=>setFlash(e?.message||"Could not load bookings")),b=watchOffers(user.email||"",setOffers),c=watchRoleAssignment(user.email||"",setAssignment),d=watchBookingLocks(date,setLocks,e=>setFlash(e?.message||"Could not load availability"));loadDeskPricing(date,{}).then(setDeskPrices).catch(()=>{});return()=>{a();b();c();d()}},[user,date]);
- // ... rest of App unchanged
- return <div className="app"><header><button className="brand" onClick={()=>nav("home")}><Logo/></button><nav className="desktopNav"><button className={page==="book"?"navActive":""} onClick={resetBook}>Book</button><button className={page==="home"?"navActive":""} onClick={()=>nav("home")}>Home</button><button className={page==="ops"?"navActive":""} onClick={()=>nav("ops")}>Operations</button><button className={page==="about"?"navActive":""} onClick={()=>nav("about")}>About</button></nav></header>{page==="home"&&<Home book={s=>{setSpace(s);setSelectedSeats([]);setStaffBooking(false);nav("book")}} prices={prices} user={user} bookings={bookings} activeLocks={activeLocks} offers={offers} nav={nav} company={company} />}<main>{page==="book"&&<BookingPage prices={prices} deskPrices={deskPrices} date={date} setDate={setDate} space={space} setSpace={setSpace} conf={conf} setConf={setConf} confDuration={confDuration} setConfDuration={setConfDuration} meeting={meeting} setMeeting={setMeeting} meetingDuration={meetingDuration} setMeetingDuration={setMeetingDuration} pod={pod} setPod={setPod} podDuration={podDuration} setPodDuration={setPodDuration} user={user} role={role} bookings={bookings} setBookings={setBookings} locks={locks} setLocks={setLocks} offers={offers} setOffers={setOffers} prices={prices} deskPrices={deskPrices} setDeskPrices={setDeskPrices} setSelectedSeats={setSelectedSeats} selectedSeats={selectedSeats} setCustomerEmail={setCustomerEmail} customerEmail={customerEmail} phoneNumber={phoneNumber} setPhoneNumber={setPhoneNumber} setStaffBooking={setStaffBooking} staffBooking={staffBooking} users={users} company={company} />}{page==="account"&&<Account bookings={bookings} staff={false} onCancel={doCancel} onCheckIn={markCheckIn} onCheckOut={markCheckOut} wifi={wifi} company={company} />}{page==="ops"&&<ManagerPage bookings={bookings} form={{}} setForm={()=>{}} createOffer={createOffer} confirm={doConfirm} revoke={doRevoke} />}{page==="admin"&&<AdminPage prices={prices} setPrices={setPrices} save={savePricing} date={date} setDate={setDate} deskPrices={deskPrices} setDeskPrices={setDeskPrices} saveDeskPrices={saveDeskPricing} copyPrice={()=>{}} wifi={wifi} setWifi={setWifi} saveWifi={saveWifi} upi={upi} setUpi={setUpi} saveUpi={saveUpi} managerEmail={managerEmail} setManagerEmail={setManagerEmail} assignManager={doAssign} admins={admins} setAdmins={setAdmins} adminLogs={adminLogs} setAdminLogs={setAdminLogs} company={company} saveCompany={(c:any)=>{saveCompanySettings(c).then(()=>{setCompany(c);(window as any)._coworx_company=c;onFlash("Company saved")}).catch(e=>onFlash(e?.message||"Could not save"))}}/>}</main></div>
+import {
+  ensureUser,
+  backfillUserBookings,
+  loadPricing as loadPricingLib,
+  loadCompanySettings,
+  loadWifi,
+  loadUpi,
+  watchBanners,
+  watchHolidays,
+  watchUser,
+  watchOffers,
+  watchRoleAssignment,
+  watchBookingLocks,
+  loadDeskPricing,
+} from "./lib/firestore";
+import "./styles.css";
+import "./mobile.css";
+import "./branding.css";
+
+const Logo = () => <img className="brandLogoImg" src={coworxLogoFull} alt="coworx central" />;
+
+export default function App() {
+  const [user, setUser] = useState<any>(null);
+  const [role, setRole] = useState<Role>("User");
+  const [page, setPage] = useState<string>("home");
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia?.("(max-width:900px)")?.matches || false
+  );
+
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [locks, setLocks] = useState<any[]>([]);
+  const [offers, setOffers] = useState<any[]>([]);
+  const [prices, setPrices] = useState<any>({});
+  const [deskPrices, setDeskPrices] = useState<any>({});
+  const [company, setCompany] = useState<any>({
+    name: "Coworx Central",
+    address: "Solapur City, Maharashtra",
+    gstNumber: "",
+    gstRate: 18,
+    phone: "",
+    email: "",
+  });
+
+  // load company and provide a safe global fallback for legacy callers
+  useEffect(() => {
+    const unBanners = (watchBanners?.( () => {}, () => {} ) as any) || (() => {});
+    const unHolidays = (watchHolidays?.( () => {}, () => {} ) as any) || (() => {});
+    loadCompanySettings()
+      .then(c => { setCompany(c); (window as any)._coworx_company = c; })
+      .catch(() => {});
+    return () => { try { unBanners(); unHolidays(); } catch (_) {} };
+  }, []);
+
+  useEffect(() => { (window as any)._coworx_company = company; }, [company]);
+
+  // load pricing / upi / wifi
+  useEffect(() => {
+    loadPricingLib().then(setPrices).catch(() => {});
+    loadWifi().catch(() => {});
+    loadUpi().catch(() => {});
+  }, []);
+
+  // auth listener
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async u => {
+      setUser(u);
+      if (!u) { setRole("User"); return; }
+      try {
+        const r = await ensureUser(u);
+        setRole(r);
+        await backfillUserBookings(u.uid);
+      } catch (e) { /* ignore for now */ }
+    });
+    return () => unsub();
+  }, []);
+
+  // watch user-scoped data when signed in
+  useEffect(() => {
+    if (!user) { setBookings([]); setOffers([]); setLocks([]); return; }
+    const uUnsub = (watchUser?.(user.uid, user.email || "", setBookings, () => {}) as any) || (() => {});
+    const offersUnsub = (watchOffers?.(user.email || "", setOffers) as any) || (() => {});
+    const roleUnsub = (watchRoleAssignment?.(user.email || "", () => {}) as any) || (() => {});
+    const locksUnsub = (watchBookingLocks?.(today(), setLocks, () => {}) as any) || (() => {});
+    (loadDeskPricing as any)?.(today(), {}).then(setDeskPrices).catch(() => {});
+    return () => { try { uUnsub(); offersUnsub(); roleUnsub(); locksUnsub(); } catch (_) {} };
+  }, [user]);
+
+  const nav = (p: string) => { setPage(p); window.scrollTo(0, 0); };
+  const resetBook = () => { setPage("book"); };
+
+  return (
+    <div className="app">
+      <header>
+        <button className="brand" onClick={() => nav("home")}><Logo /></button>
+        <nav className="desktopNav">
+          <button className={page === "book" ? "navActive" : ""} onClick={resetBook}>Book</button>
+          <button className={page === "home" ? "navActive" : ""} onClick={() => nav("home")}>Home</button>
+          <button className={page === "ops" ? "navActive" : ""} onClick={() => nav("ops")}>Operations</button>
+          <button className={page === "about" ? "navActive" : ""} onClick={() => nav("about")}>About</button>
+        </nav>
+      </header>
+
+      {page === "home" && (
+        <Home
+          book={(s: Space) => { setPage("book"); }}
+          prices={prices}
+          user={user}
+          bookings={bookings}
+          activeLocks={locks}
+          offers={offers}
+          nav={nav}
+          company={company}
+        />
+      )}
+
+      <main>
+        {page === "book" && (
+          <BookingPage
+            prices={prices}
+            deskPrices={deskPrices}
+            date={today()}
+            setDate={() => {}}
+            space={"desk" as Space}
+            setSpace={() => {}}
+            conf={"09:00"}
+            setConf={() => {}}
+            confDuration={1}
+            setConfDuration={() => {}}
+            meeting={"09:00"}
+            setMeeting={() => {}}
+            meetingDuration={1}
+            setMeetingDuration={() => {}}
+            pod={"09:00"}
+            setPod={() => {}}
+            podDuration={1}
+            setPodDuration={() => {}}
+            user={user}
+            role={role}
+            bookings={bookings}
+            setBookings={setBookings}
+            locks={locks}
+            setLocks={setLocks}
+            offers={offers}
+            setOffers={setOffers}
+            prices={prices}
+            deskPrices={deskPrices}
+            setDeskPrices={setDeskPrices}
+            setSelectedSeats={() => {}}
+            selectedSeats={[]}
+            setCustomerEmail={() => {}}
+            customerEmail={""}
+            phoneNumber={""}
+            setPhoneNumber={() => {}}
+            setStaffBooking={() => {}}
+            staffBooking={false}
+            users={[]}
+            company={company}
+          />
+        )}
+
+        {page === "account" && (
+          <Account bookings={bookings} staff={false} onCancel={() => {}} onCheckIn={() => {}} onCheckOut={() => {}} wifi={{}} company={company} />
+        )}
+
+        {page === "admin" && (
+          <AdminPage
+            prices={prices}
+            setPrices={setPrices}
+            save={() => {}}
+            date={today()}
+            setDate={() => {}}
+            deskPrices={deskPrices}
+            setDeskPrices={setDeskPrices}
+            saveDeskPrices={() => {}}
+            copyPrice={() => {}}
+            wifi={{}}
+            setWifi={() => {}}
+            saveWifi={() => {}}
+            upi={{}}
+            setUpi={() => {}}
+            saveUpi={() => {}}
+            managerEmail={""}
+            setManagerEmail={() => {}}
+            assignManager={() => {}}
+            admins={[]}
+            setAdmins={() => {}}
+            adminLogs={[]}
+            setAdminLogs={() => {}}
+            company={company}
+            saveCompany={(c: any) => {}}
+          />
+        )}
+      </main>
+    </div>
+  );
+}
