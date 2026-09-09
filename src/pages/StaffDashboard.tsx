@@ -1,3 +1,4 @@
+import { bookingOn, sessionHours, sessionState } from "../lib/business";
 import {
   ArrowRight,
   CalendarDays,
@@ -23,7 +24,7 @@ export default function StaffDashboard({
       b.status === "Confirmed" ||
       (b.status === "Pending" && (b.expiresAt?.toMillis?.() || 0) > Date.now());
   const todays = bookings.filter(
-    (b: any) => b.date <= today && (b.endDate || b.date) >= today && active(b),
+    (b: any) => bookingOn(b,today) && active(b),
   );
   const occupied = new Set(
     locks
@@ -64,7 +65,7 @@ export default function StaffDashboard({
       !(b.attendanceDate === today && b.checkedInAt),
   );
   const inside = todays.filter(
-    (b: any) => b.attendanceDate === today && b.checkedInAt && !b.checkedOutAt,
+    (b: any) => sessionState(b)==="Inside",
   );
   const hour = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Kolkata",
@@ -72,9 +73,9 @@ export default function StaffDashboard({
     minute: "2-digit",
     hour12: false,
   }).format(new Date());
-  const overdue = inside.filter((b: any) => (b.end || "19:00") < hour);
+  const overdue = todays.filter((b:any)=>sessionState(b)==="Ended" && b.attendanceDate===today && b.checkedInAt && !b.checkedOutAt);
   return (
-    <section className="workspacePage">
+    <section className="workspacePage staffOverview">
       <div className="pageHeading">
         <div>
           <span className="eyebrow">
@@ -143,7 +144,7 @@ export default function StaffDashboard({
             <Clock3 />
           </div>
           <div className="attentionList">
-            {can("bookingsConfirm") &&
+            {can("paymentsCollect") &&
               pending.slice(0, 3).map((b: any) => (
                 <button key={b.id} onClick={() => nav("staff-bookings")}>
                   <span className="attentionDot amber" />
@@ -160,7 +161,7 @@ export default function StaffDashboard({
               <button key={b.id} onClick={() => nav("reception")}>
                 <span className="attentionDot orange" />
                 <div>
-                  <b>Check-out overdue</b>
+                  <b>Session ended · departure unrecorded</b>
                   <span>
                     {b.customerName} · {b.label}
                   </span>
@@ -174,7 +175,7 @@ export default function StaffDashboard({
                 <div>
                   <b>Expected today</b>
                   <span>
-                    {b.customerName || b.customerEmail} · {b.start || "09:00"}
+                    {b.customerName || b.customerEmail} · {sessionHours(b,today).start}
                   </span>
                 </div>
                 <ArrowRight size={17} />

@@ -24,6 +24,7 @@ import {
   Role,
 } from "../pages/types";
 import { normalizeEmail, validEmail } from "./customer";
+import { bookingOn, paymentAccessError } from "./business";
 import { attendanceError, parsePass } from "./booking-pass";
 import { permissionMatrix } from "./permissions";
 
@@ -157,6 +158,8 @@ export async function ensureBookingPass(id: string) {
     const b: any = { id: snapshot.id, ...snapshot.data() };
     if (b.status !== "Confirmed")
       throw Error("A pass becomes available when your booking is confirmed.");
+    const paymentError=paymentAccessError(b);
+    if(paymentError) throw Error(paymentError);
     if (b.passToken) return b;
     const patch = {
       passToken: crypto.randomUUID(),
@@ -179,8 +182,10 @@ export async function lookupPass(raw: string) {
       "This pass is invalid. Ask the customer to reopen their booking pass.",
     );
   if (b.status !== "Confirmed") throw Error("This booking is not confirmed.");
-  if (localToday() < b.date || localToday() > (b.endDate || b.date))
+  if (!bookingOn(b,localToday()))
     throw Error("This pass is not valid today.");
+  const paymentError=paymentAccessError(b);
+  if(paymentError) throw Error(paymentError);
   return b;
 }
 export async function recordAttendance(

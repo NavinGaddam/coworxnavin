@@ -185,7 +185,8 @@ export default function OperationsSuite({
       evening: "15:00–19:00",
       note: "",
     }),
-    [refundDraft, setRefundDraft] = useState<any>({});
+    [refundDraft, setRefundDraft] = useState<any>({}),
+    [refundMethod,setRefundMethod] = useState<any>({});
   const [pricingRules, setPricingRules] = useState<any[]>([]),
     [ruleForm, setRuleForm] = useState<any>({
       label: "",
@@ -647,7 +648,7 @@ export default function OperationsSuite({
       "Customer directory",
       "Profiles, booking history and customer preferences.",
     ],
-    revenue: ["Revenue", "Reservation value and payment reporting."],
+    revenue: ["Booking value", "Value of reservations. Actual money received is in Collections."],
     catalog: ["Plans & offers", "Membership plans and customer promotions."],
     addons: [
       "Add-ons",
@@ -866,7 +867,7 @@ export default function OperationsSuite({
               icon={<CheckCircle2 />}
             />
             <Metric
-              label="Revenue"
+              label="Booked value"
               value={money(revenue)}
               icon={<WalletCards />}
             />
@@ -1034,30 +1035,13 @@ export default function OperationsSuite({
                   placeholder="e.g. 5000"
                 />
               </label>
-              <label>
-                Validity (days)
-                <input
-                  type="number"
-                  value={plan.days}
-                  onChange={(e) =>
-                    setPlan({ ...plan, days: Number(e.target.value) })
-                  }
-                  placeholder="e.g. 30"
-                />
-              </label>
-              <label>
-                Desk days included
-                <input
-                  type="number"
-                  value={plan.deskDays}
-                  onChange={(e) =>
-                    setPlan({ ...plan, deskDays: Number(e.target.value) })
-                  }
-                  placeholder="e.g. 20"
-                />
-              </label>
+              <label>Consecutive working days<select value={plan.deskDays||20} onChange={e=>setPlan({...plan,deskDays:Number(e.target.value),days:Number(e.target.value)})}><option value={10}>10 days · 1 reschedule</option><option value={20}>20 days · 2 reschedules</option><option value={30}>30 days · 3 reschedules</option></select></label>
+              <label>Minimum advance %<input type="number" min="1" max="100" value={plan.minimumAdvancePercent??50} onChange={e=>setPlan({...plan,minimumAdvancePercent:Number(e.target.value)})}/></label>
+              <label>Balance due after start (calendar days)<input type="number" min="0" max="30" value={plan.balanceDueDays??7} onChange={e=>setPlan({...plan,balanceDueDays:Number(e.target.value)})}/></label>
+              <label className="checkLabel"><input type="checkbox" checked={plan.active!==false} onChange={e=>setPlan({...plan,active:e.target.checked})}/>Available for new bookings</label>
+              <p>Sundays and declared holidays are excluded. A pass is activated through the booking and payment flow.</p>
               <button className="primary" onClick={addPlan}>
-                <Plus /> Add membership
+                <Plus /> {plan.id?"Save plan changes":"Create pass plan"}
               </button>
             </div>
             <div className="catalogList">
@@ -1069,30 +1053,7 @@ export default function OperationsSuite({
                       {money(p.price)} · {p.deskDays || p.days} desk days
                     </small>
                   </div>
-                  <input
-                    className="assignEmail"
-                    placeholder="customer email"
-                    value={membershipUser}
-                    onChange={(e) => setMembershipUser(e.target.value)}
-                  />
-                  <button
-                    className="ghost small"
-                    onClick={() => {
-                      const u = users.find(
-                        (x: any) =>
-                          emailOf(x) === membershipUser.trim().toLowerCase(),
-                      );
-                      if (!u)
-                        return onFlash("Customer not found in the directory.");
-                      assignMembership(u.uid, p, uid, email)
-                        .then(() => onFlash("Membership assigned."))
-                        .catch((e: any) =>
-                          onFlash(e.message || "Could not assign membership"),
-                        );
-                    }}
-                  >
-                    Assign
-                  </button>
+                  <span>{p.active===false?"Unavailable":"Available"}</span><button className="ghost" onClick={()=>setPlan(p)}>Edit plan</button>
                 </div>
               ))}
             </div>
@@ -1906,6 +1867,7 @@ export default function OperationsSuite({
                     {money(b.refundAmount || 0)}
                   </small>
                 </div>
+                <select aria-label="Refund method" value={refundMethod[b.id]||"UPI"} onChange={e=>setRefundMethod({...refundMethod,[b.id]:e.target.value})}><option>UPI</option><option>Cash</option><option>Other</option></select>
                 <input
                   placeholder="Refund reference"
                   value={refundDraft[b.id] || ""}
@@ -1918,7 +1880,7 @@ export default function OperationsSuite({
                 />
                 <button
                   className="ghost small"
-                  disabled={b.refundStatus === "Processed"}
+                  disabled={b.refundStatus === "Processed" || !b.refundAmount || !refundDraft[b.id]?.trim()}
                   onClick={() =>
                     updateRefund(
                       b.id,
@@ -1926,6 +1888,7 @@ export default function OperationsSuite({
                       "Processed",
                       b.refundAmount || 0,
                       refundDraft[b.id] || "",
+                      refundMethod[b.id] || "UPI",
                     )
                       .then(() => onFlash("Refund marked processed."))
                       .catch((e: any) =>

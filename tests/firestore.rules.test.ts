@@ -46,6 +46,9 @@ import {
   saveCompanySettings,
 } from "../src/lib/firestore";
 import { recordAttendance, activateAssignment } from "../src/lib/platform";
+import { DEFAULT_POLICY, consecutiveDates, officeHours } from "../src/lib/business";
+import { collectPayment, reversePayment, processRefund, saveHandover } from "../src/lib/finance";
+import { reschedulePass, grantReschedules } from "../src/lib/passes";
 import {DEFAULT_PERMISSIONS} from "../src/lib/permissions";
 import { localToday, addDays } from "../src/pages/types";
 let env: RulesTestEnvironment;
@@ -94,6 +97,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await env.clearFirestore();
   await seed("settings/permissions",DEFAULT_PERMISSIONS);
+  await seed("settings/policy",{...DEFAULT_POLICY,businessStart:"00:00",businessEnd:"23:59"});
   for (const [uid, role] of [
     ["customer", "User"],
     ["manager", "Manager"],
@@ -221,7 +225,7 @@ describe("database capability enforcement and booking lifecycle", () => {
     expect(
       (await getDoc(doc(session.db, "bookings", created.id))).data()?.userId,
     ).toBe(first.uid);
-    await assertFails(confirmBooking(created.id, "reception", 0, 250));
+    await assertSucceeds(confirmBooking(created.id, "reception", 0, 250,"Cash"));
   });
   it("atomically confirms payment including add-ons, scans in/out once, and preserves finance", async () => {
     auth("customer");
@@ -266,7 +270,8 @@ describe("database capability enforcement and booking lifecycle", () => {
   });
   it("enforces a disabled check-in permission even with a valid pass", async () => {
     auth("manager");
-    const b = await createBooking(booking({ status: "Confirmed" }));
+    const b = await createBooking(booking());
+    await confirmBooking(b.id,"manager",0,250,"Cash");
     await seed("settings/permissions", { Receptionist: { checkIn: false } });
     auth("reception");
     await assertFails(recordAttendance(b.id, "in"));
@@ -314,7 +319,7 @@ describe("database capability enforcement and booking lifecycle", () => {
     expect(lock.status).toBe("Pending");
     auth("manager");
     await expect(confirmBooking(old.id, "manager", 0, 250)).rejects.toThrow(
-      "no longer active",
+      "expired",
     );
   });
   it("keeps every desk paired with the correct date for multi-desk, multi-day bookings", async () => {
@@ -345,6 +350,7 @@ describe("database capability enforcement and booking lifecycle", () => {
     auth("manager");
     const b = await createBooking(
       booking({
+        date:addDays(today,1),endDate:addDays(today,1),
         space: "meeting",
         inventoryId: "meeting",
         start: "09:00",
@@ -353,6 +359,7 @@ describe("database capability enforcement and booking lifecycle", () => {
         status: "Confirmed",
       }),
     );
+    await confirmBooking(b.id,"manager",0,250,"Cash");
     auth("customer");
     const extended = await extendBooking(b.id, {
       uid: "customer",
@@ -365,5 +372,94 @@ describe("database capability enforcement and booking lifecycle", () => {
     expect(child.end).toBe("11:00");
     expect(child.status).toBe("Pending");
     expect(child.extensionOf).toBe(b.id);
+  });
+});
+
+describe("prepaid operations and consecutive passes",()=>{
+  async function passBooking(days=10) {
+    await seed("membershipPlans/plan",{name:`${days} day pass`,days,deskDays:days,price:1000,active:true,minimumAdvancePercent:50,balanceDueDays:7});
+    auth("customer");
+    return createBooking(booking({date:addDays(today,1),endDate:addDays(today,1),membershipId:"plan"}));
+  }
+  it("requires full advance for regular bookings and stores split receipts atomically",async()=>{
+    auth("reception");const created=await createBooking(booking({status:"Confirmed"}));
+    expect((await getDoc(doc(session.db,"bookings",created.id))).data()?.status).toBe("Pending");
+    await expect(collectPayment(created.id,{cash:100,upi:0,other:0,reference:""})).rejects.toThrow("full advance");
+    await collectPayment(created.id,{cash:100,upi:150,other:0,reference:"UPI-123"});
+    const b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;
+    const receipt=(await getDoc(doc(session.db,"payments",b.lastPaymentId))).data()!;
+    expect(b.paymentReceived).toBe(250);expect(receipt.cashAmount).toBe(100);expect(receipt.upiAmount).toBe(150);
+    await assertFails(updateDoc(doc(session.db,"payments",b.lastPaymentId),{amount:1}));
+    auth("customer");await assertFails(updateDoc(doc(session.db,"bookings",created.id),{rescheduleAllowance:100}));
+  });
+  it("records allowed pass instalments and blocks a disabled collection capability",async()=>{
+    const created=await passBooking();auth("reception");
+    await expect(collectPayment(created.id,{cash:499,upi:0,other:0,reference:""})).rejects.toThrow("at least");
+    await collectPayment(created.id,{cash:500,upi:0,other:0,reference:""});
+    let b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;
+    expect(b.passDays).toBe(10);expect(b.dates).toHaveLength(10);expect(b.rescheduleAllowance).toBe(1);expect(b.paymentStatus).toBe("Partially Paid");
+    await seed("settings/permissions",{Receptionist:{paymentsCollect:false}});
+    await assertFails(collectPayment(created.id,{cash:500,upi:0,other:0,reference:""}));
+    auth("manager");await collectPayment(created.id,{cash:0,upi:500,other:0,reference:"FINAL-1"});
+    b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;expect(b.paymentStatus).toBe("Paid");
+    expect((await getDocs(collection(session.db,"payments"))).size).toBe(2);
+  });
+  it("reschedules once, moves its locks, then requires an admin-only exception",async()=>{
+    const created=await passBooking();auth("manager");await collectPayment(created.id,{cash:500,upi:0,other:0,reference:""});
+    let b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;
+    let to=addDays(b.endDate,1);while(officeHours(to).closed)to=addDays(to,1);
+    const from=b.dates[0];auth("customer");await reschedulePass(created.id,from,to,"Unable to attend");
+    b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;expect(b.rescheduleUsed).toBe(1);expect(b.dates).not.toContain(from);expect(b.dates).toContain(to);
+    expect((await getDoc(doc(session.db,"bookingLocks",`${from}_desk-D01_day`))).data()?.status).toBe("Cancelled");
+    expect((await getDoc(doc(session.db,"bookingLocks",`${to}_desk-D01_day`))).data()?.status).toBe("Confirmed");
+    let next=addDays(to,1);while(officeHours(next).closed)next=addDays(next,1);
+    await expect(reschedulePass(created.id,b.dates[0],next,"Second change")).rejects.toThrow("allowance");
+    await assertFails(grantReschedules(created.id,1,"Customer tries exception"));
+    auth("manager");await seed("settings/permissions",{Manager:{passExceptions:true}});await assertFails(grantReschedules(created.id,2,"Not an admin"));
+    owner();await grantReschedules(created.id,2,"Festival closure");
+    b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;expect(b.rescheduleAllowance).toBe(3);
+    auth("customer");await reschedulePass(created.id,b.dates[0],next,"Approved festival change");
+    expect((await getDocs(query(collection(session.db,"passChanges"),where("bookingId","==",created.id),where("customerEmail","==","customer@example.com")))).size).toBe(3);
+  });
+  it("supports thirty-day passes within database transaction limits",async()=>{
+    const created=await passBooking(30);auth("manager");await collectPayment(created.id,{cash:1000,upi:0,other:0,reference:""});
+    const b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;expect(b.dates).toHaveLength(30);expect(b.rescheduleAllowance).toBe(3);expect(b.lockIds).toHaveLength(30);
+  });
+  it("keeps corrections immutable and prevents repeating a reversal",async()=>{
+    auth("manager");const created=await createBooking(booking());await collectPayment(created.id,{cash:250,upi:0,other:0,reference:""});
+    let b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;const original=b.lastPaymentId;
+    await assertFails(reversePayment(original,"Wrong receipt"));owner();await reversePayment(original,"Payment entered against wrong customer");
+    b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;expect(b.paymentReceived).toBe(0);
+    await expect(reversePayment(original,"Again")).rejects.toThrow("already reversed");
+    auth("reception");await expect(recordAttendance(created.id,"in")).rejects.toThrow("Full advance");
+  });
+});
+
+
+describe("refunds, handovers and exact office times",()=>{
+  it("records a cash refund once and keeps the original collection",async()=>{
+    owner();const created=await createBooking(booking({date:addDays(today,2),endDate:addDays(today,2)}));
+    await collectPayment(created.id,{cash:250,upi:0,other:0,reference:""});
+    await cancelBooking(created.id,"owner");
+    await processRefund(created.id,250,"Cash acknowledged","Cash");
+    const b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;
+    expect(b.refundStatus).toBe("Processed");expect(b.paymentReceived).toBe(250);
+    const payments=await getDocs(collection(session.db,"payments"));expect(payments.size).toBe(2);
+    expect(payments.docs.find(d=>d.data().kind==="Refund")?.data().cashAmount).toBe(250);
+    await expect(processRefund(created.id,250,"Duplicate","Cash")).rejects.toThrow("already processed");
+    auth("customer");expect((await getDocs(query(collection(session.db,"payments"),where("customerEmail","==","customer@example.com")))).size).toBe(2);
+  });
+  it("saves reception cash handovers and denies customer submissions",async()=>{
+    auth("reception");await saveHandover(today,500,750,750,"Till checked with next shift");
+    expect((await getDocs(collection(session.db,"handovers"))).size).toBe(1);
+    auth("customer");await assertFails(saveHandover(today,0,0,0,"Invalid"));
+  });
+  it("prevents quarter-hour reservations overlapping legacy hourly locks",async()=>{
+    const date=addDays(today,1);await seed(`bookingLocks/${date}_meeting_09-00`,{bookingId:"legacy",inventoryId:"meeting",userId:"customer",date,start:"09:00",end:"10:00",status:"Confirmed",expiresAt:null});
+    auth("manager");await expect(createBooking(booking({date,endDate:date,space:"meeting",inventoryId:"meeting",start:"09:15",end:"10:15",durationHours:1}))).rejects.toThrow("overlaps");
+    const a=await createBooking(booking({date,endDate:date,space:"meeting",inventoryId:"meeting",start:"10:15",end:"11:15",durationHours:1}));
+    const b=await createBooking(booking({date,endDate:date,space:"meeting",inventoryId:"meeting",start:"11:15",end:"12:15",durationHours:1}));
+    expect(a.id).not.toBe(b.id);
+    expect((await getDoc(doc(session.db,"bookings",a.id))).data()?.lockIds.length).toBe(4);
   });
 });

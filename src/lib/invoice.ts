@@ -87,6 +87,9 @@ export function downloadInvoice(b: Booking, company: any) {
   doc.setTextColor(90);
   if (b.customerEmail) (doc.text(b.customerEmail, margin, y), (y += 14));
   if (b.customerPhone) (doc.text(b.customerPhone, margin, y), (y += 14));
+  for (const text of [b.billing?.company,b.billing?.gstNumber ? `GST: ${b.billing.gstNumber}` : "",b.billing?.address].filter(Boolean)) {
+    const wrapped=doc.splitTextToSize(String(text),pageW-margin*2);doc.text(wrapped,margin,y);y+=wrapped.length*14;
+  }
   y += 6;
   line();
 

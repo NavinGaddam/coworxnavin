@@ -1,4 +1,8 @@
 // @ts-nocheck
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase";
+import PaymentDialog from "../components/PaymentDialog";
+import { DEFAULT_POLICY, consecutiveDates, officeHours, PASS_ALLOWANCES, minutes } from "../lib/business";
 import CustomerPicker from "../components/CustomerPicker";
 import { watchSetting, watchLocksRange } from "../lib/platform";
 import { validEmail, validPhone } from "../lib/customer";
@@ -48,6 +52,7 @@ import {
   watchResourceBlocksRange,
   watchHolidays,
   watchPricingRules,
+  watchMembershipPlans,
 } from "../lib/firestore";
 import conferenceImage from "../assets/conference-2.webp";
 import podcastImage from "../assets/podcast.webp";
@@ -90,13 +95,13 @@ const activeLock = (x: any) =>
   (x.status === "Pending" && (x.expiresAt?.toMillis?.() || 0) > Date.now());
 const busy = (locks: any[], space: string, slot: string) =>
   locks.some(
-    (x) => x.inventoryId === space && x.start === slot && activeLock(x),
+    (x) => x.inventoryId === space && x.start && minutes(x.start)<minutes(slot)+60 && minutes(x.end||addHours(x.start,1))>minutes(slot) && activeLock(x),
   );
-const freeHours = (locks: any[], space: string, start: string) => {
+const freeHours = (locks: any[], space: string, start: string, closing = BUSINESS_END) => {
   let n = 0;
   for (let i = 0; i < 10; i++) {
     const t = addHours(start, i);
-    if (t >= BUSINESS_END || busy(locks, space, t)) break;
+    if (minutes(t)+60 > minutes(closing) || busy(locks, space, t)) break;
     n++;
   }
   return n;
@@ -118,7 +123,7 @@ export default function Booking(p: any) {
     profession: p.staffBooking ? "" : p.myProfile?.profession || "",
     otherProfession: "",
   });
-  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(p.initialCustomer||null);
   const [submitting, setSubmitting] = useState(false);
   const submitLock = useRef(false);
   const [whatsAppUrl, setWhatsAppUrl] = useState("");
@@ -131,6 +136,9 @@ export default function Booking(p: any) {
     referralEnabled: false,
     referralRewardPercent: 0,
   });
+  const [plans,setPlans]=useState<any[]>([]),[planId,setPlanId]=useState(""),[paymentBooking,setPaymentBooking]=useState<any>(null);
+  const selectedPlan=isDesk ? plans.find(x=>x.id===planId&&x.active!==false) : null;
+  const passDays=selectedPlan ? Number(selectedPlan.deskDays || selectedPlan.days) : 0;
   const [coupons, setCoupons] = useState<any[]>([]);
   useEffect(() => {
     if (!p.myProfile || p.staffBooking) return;
@@ -143,7 +151,7 @@ export default function Booking(p: any) {
     }));
   }, [p.myProfile, p.staffBooking]);
   useEffect(() => {
-    setSelectedCustomer(null);
+    setSelectedCustomer(p.initialCustomer||null);
     setMessage("");
     setProfile({
       mobile: p.staffBooking ? "" : p.myProfile?.mobile || "",
@@ -171,9 +179,8 @@ export default function Booking(p: any) {
     [],
   );
   useEffect(() => {
-    loadPolicy()
-      .then(setPolicy)
-      .catch(() => {});
+    const stopPolicy=watchSetting("policy",p=>setPolicy({...DEFAULT_POLICY,...p}),e=>setLoadError(e.message));
+    const stopPlans=watchMembershipPlans(setPlans,e=>setLoadError(e.message));
     loadOperationsSettings()
       .then(setOps)
       .catch(() => {});
@@ -182,6 +189,7 @@ export default function Booking(p: any) {
       c = watchHolidays(setHolidays, () => {}),
       d = watchPricingRules(setPricingRules, () => {});
     return () => {
+      stopPolicy();stopPlans();
       a();
       b();
       c();
@@ -205,12 +213,16 @@ export default function Booking(p: any) {
       : p.space === "conference"
         ? Number(p.confDuration || 1)
         : Number(p.podDuration || 1);
-  const end = isDesk ? BUSINESS_END : addHours(start, duration);
-  const dates = useMemo(() => dateSpan(p.date, endDate), [p.date, endDate]);
+  const hours=officeHours(p.date,policy,holidays);
+  const end = isDesk ? hours.end : addHours(start, duration);
+  const dates = useMemo(() => !p.date || !endDate ? [] : passDays ? consecutiveDates(p.date,passDays,policy,holidays) : dateSpan(p.date,endDate), [p.date,endDate,passDays,policy,holidays]);
+  useEffect(()=>{if(passDays&&dates.length)setEndDate(dates[dates.length-1]);},[dates.join(","),passDays]);
+  useEffect(()=>{if(!isDesk && (start < hours.start || minutes(start)+60>minutes(hours.end))) {const n=Math.ceil(minutes(hours.start)/15)*15;setStart(p,`${String(Math.floor(n/60)).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`);}},[hours.start,hours.end,isDesk]);
   const days = dates.length;
   useEffect(() => {
     setInventoryLoading(true);
     setLoadError("");
+    if(!dates.length){setInventoryLoading(false);return;}
     return watchLocksRange(
       dates,
       (rows) => {
@@ -234,11 +246,11 @@ export default function Booking(p: any) {
   }, [dates.join(",")]);
   const maxDate = addDays(localToday(), Number(policy.maxAdvanceDays || 60));
   const withinAdvance =
-    p.date >= localToday() && endDate >= p.date && endDate <= maxDate;
+    p.date >= localToday() && endDate >= p.date && (passDays || endDate <= maxDate);
   const withinHours =
     isDesk ||
-    (start >= policy.businessStart && end <= policy.businessEnd && start < end);
-  const roomAvailable = isDesk ? 0 : freeHours(locks, p.space, start);
+    dates.every(d=>{const h=officeHours(d,policy,holidays);return !h.closed&&start>=h.start&&end<=h.end&&start<end;});
+  const roomAvailable = isDesk ? 0 : freeHours(locks, p.space, start, dates.reduce((end,d)=>officeHours(d,policy,holidays).end<end?officeHours(d,policy,holidays).end:end,hours.end));
   const startBusy = !isDesk && busy(locks, p.space, start);
   const blockedRange = isDesk
     ? selected.some((id) =>
@@ -296,8 +308,9 @@ export default function Booking(p: any) {
     return rate * duration;
   };
   const baseTotal = useMemo(
-    () => dates.reduce((sum, d) => sum + dayBase(d), 0),
+    () => selectedPlan ? Number(selectedPlan.price)*selected.length : dates.reduce((sum, d) => sum + dayBase(d), 0),
     [
+      selectedPlan,
       dates.join(","),
       selected.join(","),
       pricingRules,
@@ -309,7 +322,7 @@ export default function Booking(p: any) {
     ],
   );
   const dailyBase = days ? Math.round(baseTotal / days) : 0;
-  const stayDiscount = days >= 5 ? Math.round(baseTotal * 0.1) : 0;
+  const stayDiscount = !passDays && days >= 5 ? Math.round(baseTotal * 0.1) : 0;
   const bulkDiscount =
     isDesk && selected.length > 5 ? Math.round(baseTotal * 0.1) : 0;
   const wednesdayDates = dates.filter(isWednesday);
@@ -324,9 +337,7 @@ export default function Booking(p: any) {
           0,
         )
       : 0;
-  const holidayDates = dates.filter((d) =>
-    holidays.some((h: any) => h.date === d),
-  );
+  const holidayDates = dates.filter(d=>officeHours(d,policy,holidays).closed);
   const coupon = coupons.find(
     (c) =>
       c.active &&
@@ -362,7 +373,7 @@ export default function Booking(p: any) {
     }))
     .sort((a, b) => b.disc - a.disc)[0];
   const offerDiscount = bestOffer?.disc || 0;
-  const discount = Math.min(
+  const discount = passDays ? 0 : Math.min(
     baseTotal,
     stayDiscount +
       bulkDiscount +
@@ -397,7 +408,7 @@ export default function Booking(p: any) {
         `Bookings can be made up to ${policy.maxAdvanceDays} days ahead.`,
       );
     if (!withinHours)
-      return setMessage("Bookings must stay within 9:00 AM–7:00 PM.");
+      return setMessage(`Bookings must stay within the office hours for every selected date.`);
     if (holidayDates.length)
       return setMessage(
         `Coworx Central is closed on ${holidayDates.join(", ")}${holidayDates.length === 1 ? "" : ""} (holiday). Please choose different dates.`,
@@ -512,8 +523,8 @@ export default function Booking(p: any) {
               (_, i) => `${d}_${p.space}_${addHours(start, i)}`,
             ),
           );
-      await createBooking({
-        date: p.date,
+      const created = await createBooking({
+        date: dates[0],
         endDate,
         days,
         dates,
@@ -521,7 +532,8 @@ export default function Booking(p: any) {
         inventoryId: ids[0],
         inventoryIds: ids,
         lockKeys,
-        label: isDesk
+        membershipId:selectedPlan?.id,
+        label: selectedPlan ? `${selectedPlan.name} · ${selected.join(", ")}` : isDesk
           ? `${selected.length} Desk${selected.length === 1 ? "" : "s"}`
           : getTitle(p.space),
         userId: p.staffBooking ? selectedCustomer.uid : p.user.uid,
@@ -543,8 +555,12 @@ export default function Booking(p: any) {
         addons: selectedAddons,
         amenities,
         notes,
-        status: p.staffBooking && p.canConfirm ? "Confirmed" : "Pending",
+        status: "Pending",
       });
+      if (p.staffBooking && p.canConfirm) {
+        const saved=await getDoc(doc(db,"bookings",created.id));
+        setPaymentBooking({id:created.id,...saved.data()});
+      }
       if (!p.staffBooking) {
         const deskText = isDesk ? `Desk number(s): ${selected.join(", ")}` : "";
         const text = `Hello Coworx Central, I want to book ${isDesk ? `${selected.length} desk(s) — ${selected.join(", ")}` : getTitle(p.space)} from ${p.date} to ${endDate}${isDesk ? "" : ` · ${start}–${end}`}. ${deskText} Total: ₹${total}. Mobile: ${phone}.`;
@@ -556,12 +572,11 @@ export default function Booking(p: any) {
       setMessage(
         p.staffBooking
           ? p.canConfirm
-            ? `Booking confirmed for ${email}. Payment is pending until recorded.`
+            ? `Request saved for ${email}. Collect payment to confirm.`
             : `Request saved for ${email}. A manager can confirm payment.`
           : `Request created. The slot is held for 15 minutes while payment is completed.`,
       );
-      p.setSelectedSeats([]);
-      p.onBooked?.();
+      if (!p.staffBooking || !p.canConfirm) {p.setSelectedSeats([]);p.onBooked?.();}
     } catch (e: any) {
       waWindow?.close();
       const conflicts: { inventoryId: string }[] = e?.conflicts || [];
@@ -582,6 +597,7 @@ export default function Booking(p: any) {
   };
   return (
     <main className="page bookingPage">
+      {paymentBooking&&<PaymentDialog booking={paymentBooking} canDiscount={p.canDiscount} onClose={()=>setPaymentBooking(null)} onSaved={(receipt)=>{setPaymentBooking(null);setMessage(`Booking confirmed. Receipt ${receipt}.`);p.setSelectedSeats([]);p.onBooked?.();p.nav?.("staff-bookings");}}/>}
       {whatsAppUrl && (
         <div className="inlineSuccess" role="status">
           <CheckCircle2 size={18} /> Booking requested.{" "}
@@ -605,8 +621,7 @@ export default function Booking(p: any) {
             {p.staffBooking ? "Book for a customer" : "Choose your workspace."}
           </h2>
           <p>
-            All services operate <strong>9:00 AM–7:00 PM</strong>. Timed rooms
-            stop at the next booked time or 7:00 PM.
+            Office hours for {p.date}: <strong>{hours.closed?hours.reason:`${hours.start}–${hours.end}`}</strong>. Daily desks end at closing time. Sundays are holidays.
           </p>
         </div>
         {p.staff && (
@@ -644,7 +659,8 @@ export default function Booking(p: any) {
       </div>
       <div className="bookingGrid">
         <section className="panel bookingPanel">
-          <DateRangePicker
+          {isDesk&&<div className="passChooser"><label>Booking type<select value={planId} onChange={e=>{setPlanId(e.target.value);setEndDate(p.date);p.setSelectedSeats([]);}}><option value="">Regular desk booking · full advance</option>{plans.filter(x=>x.active!==false&&PASS_ALLOWANCES[Number(x.deskDays||x.days)]).map(x=><option key={x.id} value={x.id}>{x.name} · {Number(x.deskDays||x.days)} working days · ₹{x.price}/desk</option>)}</select></label>{selectedPlan&&<p className="noticeBox">One desk per pass · {passDays} consecutive working days, excluding Sundays and declared holidays. {PASS_ALLOWANCES[passDays]} day reschedule allowance. Partial advance permitted; extra reschedules require admin approval.</p>}</div>}
+          {passDays?<div className="fieldGrid"><label>Pass starts<input type="date" min={localToday()} max={maxDate} value={p.date} onChange={e=>{if(e.target.value)p.setDate(e.target.value)}}/></label><div><small>Last included working day</small><strong className="passEndDate">{endDate}</strong></div></div>:<DateRangePicker
             start={p.date}
             end={endDate}
             min={localToday()}
@@ -660,7 +676,7 @@ export default function Booking(p: any) {
                   ? "wednesday"
                   : undefined
             }
-          />
+          />}
           <div className="rangeSummary standaloneRangeSummary">
             <CalendarDays size={17} />
             <strong>
@@ -741,13 +757,14 @@ export default function Booking(p: any) {
                 p.setSelectedSeats(
                   selected.includes(id)
                     ? selected.filter((x) => x !== id)
-                    : [...selected, id],
+                    : passDays ? [id] : [...selected, id],
                 );
               }}
             />
           ) : (
             <RoomCard
               p={p}
+              officeHours={hours}
               space={p.space}
               start={start}
               duration={duration}
@@ -773,6 +790,8 @@ export default function Booking(p: any) {
           />
         </section>
         <Summary
+          officeHours={hours}
+          passDays={passDays}
           staffBooking={!!p.staffBooking}
           canConfirm={p.canConfirm}
           busy={submitting || inventoryLoading}
@@ -900,7 +919,7 @@ function DeskFloor({
   return (
     <>
       <div className="workingHoursBanner">
-        <Clock3 /> <b>Open 9:00 AM–7:00 PM</b>
+        <Clock3 /> <b>Open {officeHours.start}–{officeHours.end}</b>
         <span>22 desks · live availability · full-day booking</span>
       </div>
       <div className="panelHead">
@@ -1000,13 +1019,9 @@ function DeskCard({ id, selected, booked, maintained, price, onToggle }: any) {
     </button>
   );
 }
-function RoomCard({ p, space, start, duration, available, locks }: any) {
-  const starts: string[] =
-    space === "meeting"
-      ? meetingStarts
-      : space === "conference"
-        ? confStarts
-        : podStarts;
+function RoomCard({ p, space, start, duration, available, locks, officeHours }: any) {
+  const firstSlot=Math.ceil(minutes(officeHours.start)/15)*15;
+  const starts=Array.from({length:Math.max(0,Math.floor((minutes(officeHours.end)-firstSlot-60)/15)+1)},(_,i)=>{const n=firstSlot+i*15;return `${String(Math.floor(n/60)).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`});
   const title = getTitle(space);
   const price = roomPrice(p);
   const times = Array.from(
@@ -1059,7 +1074,7 @@ function RoomCard({ p, space, start, duration, available, locks }: any) {
           <strong>₹{price}/hour</strong>
         </div>
         <div className="workingHoursBanner">
-          <Clock3 /> <b>Open 9:00 AM–7:00 PM</b>
+          <Clock3 /> <b>Open {officeHours.start}–{officeHours.end}</b>
           <span>Multi-hour booking enabled.</span>
         </div>
         <div className="roomControls">
@@ -1070,7 +1085,7 @@ function RoomCard({ p, space, start, duration, available, locks }: any) {
                 <option
                   key={s}
                   value={s}
-                  disabled={busy(locks, space, s) || s >= BUSINESS_END}
+                  disabled={busy(locks, space, s) || s >= officeHours.end}
                 >
                   {s}
                   {busy(locks, space, s) ? " · BOOKED" : ""}
@@ -1225,6 +1240,7 @@ function Extras({
   );
 }
 function Summary({
+  officeHours,passDays,
   staffBooking,
   canConfirm,
   customerReady = true,
@@ -1285,7 +1301,7 @@ function Summary({
         </p>
       )}
       <p>
-        <Clock3 /> Business hours: 9:00 AM–7:00 PM
+        <Clock3 /> Office hours: {officeHours.start}–{officeHours.end}
       </p>
       {!withinAdvance && (
         <Info text={`Max advance booking is ${limit} days.`} danger />
@@ -1349,7 +1365,7 @@ function Summary({
         <span>Total</span>
         <strong>₹{total}</strong>
       </div>
-      {days >= 5 ? (
+      {!passDays && days >= 5 ? (
         <div className="multiDayPromo">
           <Percent />
           <div>
@@ -1362,7 +1378,7 @@ function Summary({
         <Lock />
         <span>
           {staffBooking
-            ? "Save a customer first. Payment is recorded separately by authorized staff."
+            ? "Save the customer, then collect payment before confirming the booking."
             : "Online requests reserve the selected resource for 15 minutes while payment is completed."}
         </span>
       </div>
@@ -1378,7 +1394,7 @@ function Summary({
         ) : staffBooking ? (
           <>
             <CheckCircle2 />{" "}
-            {canConfirm ? "Confirm booking" : "Create booking request"}
+            {canConfirm ? "Continue to payment" : "Create booking request"}
           </>
         ) : (
           <>

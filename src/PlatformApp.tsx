@@ -1,9 +1,11 @@
+import { DEFAULT_POLICY } from "./lib/business";
 import {
   lazy,
   Suspense,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -16,6 +18,9 @@ import { auth } from "./firebase";
 import { validPhone } from "./lib/customer";
 import {
   CalendarDays,
+  WalletCards,
+  Ticket,
+  Plus,
   Home,
   LayoutDashboard,
   LogOut,
@@ -73,6 +78,8 @@ import InstallApp from "./components/InstallApp";
 import logo from "./assets/coworx-logo-full.png";
 const BookingPage = lazy(() => import("./pages/Booking"));
 const BookingsPage = lazy(() => import("./pages/BookingsPage"));
+const Collections = lazy(() => import("./pages/Collections"));
+const CustomerDirectory = lazy(() => import("./pages/CustomerDirectory"));
 const Reception = lazy(() => import("./pages/Reception"));
 const Administration = lazy(() => import("./pages/Administration"));
 const Operations = lazy(() => import("./pages/OperationsSuite"));
@@ -101,7 +108,7 @@ const operationalPages: [string, string, Permission, string][] = [
   ["ops:wednesday", "Wednesday policy", "pricingManage", "Workspace"],
   ["ops:banners", "Homepage notices", "noticesManage", "Communications"],
   ["ops:comms", "Message templates", "communicationsManage", "Communications"],
-  ["ops:revenue", "Revenue", "revenueView", "Finance"],
+  ["ops:revenue", "Booking value", "revenueView", "Finance"],
   ["ops:refunds", "Refunds", "refundsManage", "Finance"],
 ];
 export default function PlatformApp() {
@@ -134,6 +141,7 @@ export default function PlatformApp() {
     [blocks, setBlocks] = useState<any[]>([]),
     [availabilityLoaded, setAvailabilityLoaded] = useState(false),
     [assignment, setAssignment] = useState<any>(null);
+  const [businessPolicy,setBusinessPolicy]=useState<any>(DEFAULT_POLICY);
   const [company, setCompany] = useState<any>(companyDefault),
     [wifi, setWifi] = useState<any>({}),
     [upi, setUpi] = useState<any>({}),
@@ -152,6 +160,8 @@ export default function PlatformApp() {
     [podDuration, setPodDuration] = useState(1);
   const [clock, setClock] = useState(Date.now());
   const businessToday = localToday();
+  const [initialCustomer,setInitialCustomer]=useState<any>(null),[scanRequest,setScanRequest]=useState(0);
+  const routed=useRef("");
   const [customerQuery, setCustomerQuery] = useState("");
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 30000);
@@ -173,6 +183,13 @@ export default function PlatformApp() {
   );
   const hasStaffAccess = role !== "User";
   const hasAdmin = PERMISSION_ADMIN.some(can);
+  useEffect(()=>{
+    if(!profile||!user)return;
+    const key=`${user.uid}:${role}`;
+    if(routed.current===key)return;
+    routed.current=key;
+    if(hasStaffAccess&&!window.location.search)setPage(role==="Receptionist"&&can("checkIn")?"reception":can("bookingsView")?"dashboard":hasAdmin?"administration":"home");
+  },[profile,role,user?.uid]);
   const reportError = useCallback(
     (e: any) => setFlash(e?.message || "Could not load workspace data."),
     [],
@@ -265,6 +282,7 @@ export default function PlatformApp() {
   useEffect(() => {
     const stops = [
       watchBanners(setBanners),
+      watchSetting("policy",p=>setBusinessPolicy({...DEFAULT_POLICY,...p}),reportError),
       watchSetting("pricing", (data) =>
         setPrices({ ...DEFAULT_PRICING, ...data }),
       ),
@@ -349,6 +367,7 @@ export default function PlatformApp() {
     setSpace(s);
     setSelectedSeats([]);
     setDate(localToday());
+    setInitialCustomer(null);
     setStaffBooking(walkIn && can("bookingsCreate"));
     nav("book");
   };
@@ -390,15 +409,16 @@ export default function PlatformApp() {
       gender: profile?.gender || "",
       dob: profile?.dob || "",
       profession: profile?.profession || "",
+      company:profile?.company||"",gstNumber:profile?.gstNumber||"",billingAddress:profile?.billingAddress||"",reminderPreferences:profile?.reminderPreferences||{booking:true,expiry:true,balance:true},
     });
     setProfileOpen(true);
   };
   const staffPage =
-    ["dashboard", "reception", "staff-bookings", "administration"].includes(
+    ["dashboard", "reception", "staff-bookings", "administration", "passes", "collections"].includes(
       page,
-    ) || page.startsWith("ops:");
+    ) || page.startsWith("ops:") || page==="book"&&staffBooking;
   const permitted =
-    page === "dashboard"
+    page === "passes" ? can("passesView") : page === "collections" ? can("collectionsView") : page === "dashboard"
       ? can("bookingsView")
       : page === "reception"
         ? can("bookingsView") && (can("checkIn") || can("checkOut"))
@@ -439,7 +459,7 @@ export default function PlatformApp() {
   );
   return (
     <div className="platformApp">
-      <header className="siteHeader">
+      <header className={`siteHeader ${staffPage?"staffHeader":""}`}>
         <button
           className="siteBrand"
           onClick={() => nav("home")}
@@ -447,7 +467,7 @@ export default function PlatformApp() {
         >
           <img src={logo} alt="Coworx Central" />
         </button>
-        <nav className="siteNav" aria-label="Main navigation">
+        {!staffPage&&<nav className="siteNav" aria-label="Main navigation">
           <button
             className={page === "home" ? "active" : ""}
             onClick={() => nav("home")}
@@ -488,7 +508,7 @@ export default function PlatformApp() {
               Staff workspace
             </button>
           )}
-        </nav>
+        </nav>}
         <div className="headerTools">
           <button
             className="commandTrigger"
@@ -496,7 +516,7 @@ export default function PlatformApp() {
             aria-label="Open search"
           >
             <Search size={17} />
-            <kbd>⌘ K</kbd>
+            {staffPage&&<span>Search customer or desk</span>}<kbd>Ctrl K</kbd>
           </button>
           <button
             className="iconButton"
@@ -528,6 +548,14 @@ export default function PlatformApp() {
           </button>
         </div>
       </header>
+      {staffPage&&<div className="staffCommandBar"><nav className="primaryStaffNav" aria-label="Daily work">
+        {can("bookingsView")&&navButton(role==="Receptionist"?"reception":"dashboard",role==="Receptionist"?"Front Desk":"Overview",LayoutDashboard)}
+        {role!=="Receptionist"&&(can("checkIn")||can("checkOut"))&&navButton("reception","Front Desk",ScanLine)}
+        {can("bookingsView")&&navButton("staff-bookings","Bookings",CalendarDays)}
+        {can("customersView")&&navButton("ops:customers","Customers",Users)}
+        {can("passesView")&&navButton("passes","Passes",Ticket)}
+        {can("collectionsView")&&navButton("collections","Collections",WalletCards)}
+      </nav><div className="staffQuickActions">{(can("checkIn")||can("checkOut"))&&<button className="ghost" onClick={()=>{nav("reception");setScanRequest(x=>x+1);}}><ScanLine size={19}/>Scan pass</button>}{can("bookingsCreate")&&<button className="primary" onClick={()=>book("desk",true)}><Plus size={19}/>New booking</button>}</div></div>}
       {!online && (
         <div className="offlineBanner" role="status">
           <WifiOff size={17} /> You’re offline. Saved bookings and passes remain
@@ -593,41 +621,11 @@ export default function PlatformApp() {
       )}
       <div className={staffPage ? "staffLayout" : "customerLayout"}>
         {staffPage && (
-          <aside className="workspaceSidebar">
-            <span className="sidebarEyebrow">STAFF WORKSPACE</span>
-            {can("bookingsView") && (
-              <>
-                {navButton("dashboard", "Overview", LayoutDashboard)}
-                {navButton("staff-bookings", "Bookings", CalendarDays)}
-              </>
-            )}
-            {(can("checkIn") || can("checkOut")) &&
-              navButton("reception", "Front desk", ScanLine)}
-            {operationalPages
-              .filter(([, , p]) => can(p))
-              .map(([id, label, , group], i, all) => (
-                <div key={id}>
-                  {(!i || all[i - 1][3] !== group) && (
-                    <span className="sidebarGroup">{group}</span>
-                  )}
-                  {navButton(id, label, group === "People" ? Users : Settings2)}
-                </div>
-              ))}
-            {hasAdmin && (
-              <>
-                <span className="sidebarGroup">Business</span>
-                {navButton("administration", "Administration", Settings2)}
-              </>
-            )}
-            <div className="sidebarIdentity">
-              <span className="avatar small">
-                {(user?.displayName || "?")[0]}
-              </span>
-              <span>
-                <b>{user?.displayName?.split(" ")[0]}</b>
-                <small>{owner ? "Owner" : role}</small>
-              </span>
-            </div>
+          <aside className="workspaceSidebar"><span className="sidebarEyebrow">WORKSPACE TOOLS</span>
+            {(can("checkIn")||can("checkOut"))&&navButton("reception","Front desk",ScanLine)}
+            {operationalPages.filter(([id,,permission])=>id!=="ops:customers"&&can(permission)).map(([id,label,,group],i,all)=><div key={id}>{(!i||all[i-1][3]!==group)&&<span className="sidebarGroup">{group}</span>}{navButton(id,label,Settings2)}</div>)}
+            {hasAdmin&&navButton("administration","Business settings",Settings2)}
+            <div className="sidebarIdentity"><span className="avatar small">{(user?.displayName||"?")[0]}</span><span><b>{user?.displayName?.split(" ")[0]}</b><small>{owner?"Owner":role}</small></span></div>
           </aside>
         )}
         <div className="pageContent">
@@ -659,6 +657,8 @@ export default function PlatformApp() {
                   <CustomerHome
                     user={user}
                     prices={prices}
+                    profile={profile}
+                    policy={businessPolicy}
                     bookings={bookings}
                     activeLocks={liveLocks}
                     maintenance={blocks}
@@ -695,7 +695,9 @@ export default function PlatformApp() {
                     user={user}
                     role={role}
                     staff={can("bookingsCreate")}
-                    canConfirm={can("bookingsConfirm")}
+                    canConfirm={can("paymentsCollect")}
+                    canDiscount={can("bookingsDiscount")}
+                    initialCustomer={initialCustomer}
                     canCreateCustomer={can("customersCreate")}
                     users={users}
                     nav={nav}
@@ -714,6 +716,7 @@ export default function PlatformApp() {
                       gender: profile?.gender || "",
                       dob: profile?.dob || "",
                       profession: profile?.profession || "",
+      company:profile?.company||"",gstNumber:profile?.gstNumber||"",billingAddress:profile?.billingAddress||"",reminderPreferences:profile?.reminderPreferences||{booking:true,expiry:true,balance:true},
                     }}
                     onProfileSaved={(data: any) =>
                       setProfile({ ...profile, ...data, phone: data.mobile })
@@ -735,22 +738,23 @@ export default function PlatformApp() {
                     setPodDuration={setPodDuration}
                   />
                 )}
-                {(page === "bookings" || page === "staff-bookings") && user && (
+                {(page === "bookings" || page === "staff-bookings" || page === "passes") && user && (
                   <BookingsPage
                     key={page}
                     user={user}
                     bookings={
-                      page === "staff-bookings" ? staffBookings : bookings
+                      page !== "bookings" ? staffBookings : bookings
                     }
-                    staff={page === "staff-bookings"}
+                    staff={page !== "bookings"}
+                    passesOnly={page === "passes"}
                     can={can}
                     company={company}
                     wifi={wifi}
                     onFlash={setFlash}
                     loading={
-                      page === "staff-bookings" ? staffLoading : bookingsLoading
+                      page !== "bookings" ? staffLoading : bookingsLoading
                     }
-                    book={() => book("desk", page === "staff-bookings")}
+                    book={() => book("desk", page !== "bookings")}
                   />
                 )}
                 {page === "dashboard" && (
@@ -767,6 +771,7 @@ export default function PlatformApp() {
                 )}
                 {page === "reception" && (
                   <Reception
+                    scanRequest={scanRequest}
                     bookings={staffBookings}
                     can={can}
                     onFlash={setFlash}
@@ -783,11 +788,14 @@ export default function PlatformApp() {
                     admins={admins}
                     logs={logs}
                     matrix={matrix}
+                    bookings={staffBookings}
                     can={can}
                     onFlash={setFlash}
                   />
                 )}
-                {page.startsWith("ops:") && (
+                {page==="collections"&&<Collections bookings={staffBookings} can={can} company={company} onFlash={setFlash}/>}
+                {page==="ops:customers"&&<CustomerDirectory users={users} bookings={staffBookings} user={user} can={can} company={company} onFlash={setFlash} initialQuery={customerQuery} bookCustomer={(customer:any)=>{book("desk",true);setInitialCustomer(customer);}}/>}
+                {page.startsWith("ops:") && page!=="ops:customers" && (
                   <Operations
                     key={page}
                     initialTab={page.slice(4)}
@@ -869,6 +877,8 @@ export default function PlatformApp() {
               </label>
             ))}
           </div>
+          <div className="fieldGrid">{[["company","Company"],["gstNumber","GST number"],["billingAddress","Billing address"]].map(([key,label])=><label key={key}>{label}<input value={profileDraft[key]||""} onChange={e=>setProfileDraft({...profileDraft,[key]:e.target.value})}/></label>)}</div>
+          <div className="preferenceRow">{[["booking","Booking reminders"],["expiry","Pass expiry reminders"],["balance","Payment reminders"]].map(([key,label])=><label className="checkLabel" key={key}><input type="checkbox" checked={profileDraft.reminderPreferences?.[key]!==false} onChange={e=>setProfileDraft({...profileDraft,reminderPreferences:{...profileDraft.reminderPreferences,[key]:e.target.checked}})}/>{label}</label>)}</div>
           <div className="formActions">
             <button className="textButton" onClick={signout}>
               <LogOut size={16} /> Sign out

@@ -17,6 +17,8 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
+import { DEFAULT_POLICY, officeHours, consecutiveDates, PASS_ALLOWANCES, cancellationQuote, timeAt, validatePolicy, minutes } from "./business";
+import { collectPayment, processRefund } from "./finance";
 import { normalizeEmail, validateCustomer } from "./customer";
 import { localToday, dateSpan } from "../pages/types";
 import {
@@ -583,23 +585,21 @@ export function watchHolidays(
   );
 }
 export async function setHoliday(date: string, reason: string, uid: string) {
-  await setDoc(
-    doc(db, "holidays", date),
-    {
-      date,
-      reason,
-      active: true,
-      createdBy: uid,
-      createdAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
+  const holidayRef=doc(db,"holidays",date), policyRef=doc(db,"settings","policy");
+  await runTransaction(db,async tx=>{
+    const snapshot=await tx.get(policyRef), policy={...DEFAULT_POLICY,...snapshot.data()};
+    const calendar={...(snapshot.data()?.calendar||{}),[date]:officeHours(date,policy,[{date,reason,active:true}])};
+    tx.set(holidayRef,{date,reason,active:true,createdBy:uid,createdAt:serverTimestamp()},{merge:true});
+    tx.set(policyRef,{calendar},{merge:true});
+  });
 }
 export async function removeHoliday(date: string, uid: string) {
-  await updateDoc(doc(db, "holidays", date), {
-    active: false,
-    updatedBy: uid,
-    updatedAt: serverTimestamp(),
+  const holidayRef=doc(db,"holidays",date), policyRef=doc(db,"settings","policy");
+  await runTransaction(db,async tx=>{
+    const snapshot=await tx.get(policyRef), policy={...DEFAULT_POLICY,...snapshot.data()};
+    const calendar={...(snapshot.data()?.calendar||{}),[date]:officeHours(date,policy,[])};
+    tx.update(holidayRef,{active:false,updatedBy:uid,updatedAt:serverTimestamp()});
+    tx.set(policyRef,{calendar},{merge:true});
   });
 }
 export function watchBanners(
@@ -710,7 +710,11 @@ export async function loadPolicy() {
     : { maxAdvanceDays: 60, businessStart: "09:00", businessEnd: "19:00" };
 }
 export async function savePolicy(data: any) {
-  await setDoc(doc(db, "settings", "policy"), data, { merge: true });
+  const policy={...DEFAULT_POLICY,...data};
+  validatePolicy(policy);
+  const holidays=(await getDocs(collection(db,"holidays"))).docs.map(d=>d.data());
+  const calendar=Object.fromEntries(Array.from({length:740},(_,i)=>{const d=addDays(localToday(),i);return [d,officeHours(d,policy,holidays)];}));
+  await setDoc(doc(db,"settings","policy"),{...policy,calendar},{merge:true});
 }
 export async function loadOperationsSettings() {
   const s = await getDoc(doc(db, "settings", "operations"));
@@ -913,18 +917,12 @@ export async function toggleCoupon(id: string, active: boolean, uid: string) {
   });
 }
 export async function createMembershipPlan(data: any, uid: string) {
-  await addDoc(
-    collection(db, "membershipPlans"),
-    clean({
-      ...data,
-      price: Number(data.price || 0),
-      days: Number(data.days || 0),
-      deskDays: Number(data.deskDays || 0),
-      createdBy: uid,
-      active: true,
-      createdAt: serverTimestamp(),
-    }),
-  );
+  const days=Number(data.deskDays || data.days);
+  if (!PASS_ALLOWANCES[days] || !String(data.name||"").trim() || !Number.isFinite(Number(data.price)) || Number(data.price)<=0) throw Error("Enter a name, positive price and 10 / 20 / 30 working days.");
+  const percent=Number(data.minimumAdvancePercent||50),due=Number(data.balanceDueDays??7);
+  if(percent<1||percent>100||!Number.isInteger(due)||due<0||due>30)throw Error("Choose an advance of 1–100% and balance due in 0–30 days.");
+  const ref=data.id ? doc(db,"membershipPlans",data.id) : doc(collection(db,"membershipPlans"));
+  await setDoc(ref,{name:String(data.name).trim(),description:String(data.description||""),price:Number(data.price),days,deskDays:days,minimumAdvancePercent:percent,balanceDueDays:due,createdBy:uid,active:data.active!==false,updatedAt:serverTimestamp()},{merge:true});
 }
 export async function assignMembership(
   uid: string,
@@ -1018,90 +1016,13 @@ export async function confirmBooking(
   paymentMethod?: string,
   paymentRef?: string,
 ) {
-  const company = await getDoc(doc(db, "settings", "company"));
-  const invoicePrefix =
-    String(company.data()?.invoicePrefix || "CC").trim() || "CC";
-  return runTransaction(db, async (tx) => {
-    const ref = doc(db, "bookings", id),
-      snapshot = await tx.get(ref);
-    if (!snapshot.exists()) throw Error("Booking not found.");
-    const d: any = snapshot.data();
-    if (!["Pending", "Confirmed"].includes(d.status))
-      throw Error("This booking is no longer active.");
-    if (
-      d.status === "Pending" &&
-      (d.expiresAt?.toMillis?.() || 0) <= Date.now()
-    )
-      throw Error(
-        "This hold has expired. Create a new booking to check availability.",
-      );
-    const sd = Number(staffDiscount);
-    const subtotal =
-      Number(d.base || 0) +
-      (d.addons || []).reduce(
-        (n: number, a: any) => n + Number(a.total || 0),
-        0,
-      ) -
-      Number(d.discount || 0);
-    if (!Number.isFinite(sd) || sd < 0 || sd > subtotal)
-      throw Error("Enter a valid staff discount.");
-    const total = Math.round((subtotal - sd) * 100) / 100;
-    const received =
-      paymentReceived === undefined
-        ? Number(d.paymentReceived || 0)
-        : Number(paymentReceived);
-    if (!Number.isFinite(received) || received < 0 || received > total)
-      throw Error(
-        "Received amount must be between zero and the booking total.",
-      );
-    if (received < Number(d.paymentReceived || 0))
-      throw Error(
-        "Recorded payments cannot be reduced here. Use the refund workflow.",
-      );
-    const lockRefs = (d.lockIds?.length ? d.lockIds : [id]).map((key: string) =>
-      doc(db, "bookingLocks", key),
-    );
-    const locks = await Promise.all(lockRefs.map((r: any) => tx.get(r)));
-    if (
-      locks.some(
-        (l: any) =>
-          !l.exists() ||
-          l.data().bookingId !== id ||
-          !["Pending", "Confirmed"].includes(l.data().status),
-      )
-    )
-      throw Error(
-        "The reserved slot changed. Review availability and create a new booking.",
-      );
-    tx.update(ref, {
-      status: "Confirmed",
-      staffDiscount: sd,
-      total,
-      confirmedBy: uid,
-      confirmedAt: serverTimestamp(),
-      expiresAt: null,
-      paymentReceived: received,
-      paymentMethod: paymentMethod || "Other",
-      paymentRef: paymentRef || "",
-      paymentStatus:
-        received >= total
-          ? "Paid"
-          : received > 0
-            ? "Partially Paid"
-            : "Pending",
-      invoiceNumber:
-        d.invoiceNumber ||
-        `${invoicePrefix}-${localToday().slice(0, 4)}-${id.slice(0, 8).toUpperCase()}`,
-    });
-    lockRefs.forEach((r: any) =>
-      tx.update(r, {
-        status: "Confirmed",
-        expiresAt: null,
-        updatedAt: serverTimestamp(),
-      }),
-    );
-  });
+  const snapshot = await getDoc(doc(db,"bookings",id));
+  if (!snapshot.exists()) throw Error("Booking not found.");
+  const received = Number(snapshot.data().paymentReceived || 0);
+  const amount = Number(paymentReceived ?? received) - received;
+  return collectPayment(id,{cash:paymentMethod === "Cash" ? amount : 0,upi:paymentMethod === "UPI" ? amount : 0,other:!["Cash","UPI"].includes(paymentMethod || "Other") ? amount : 0,reference:paymentRef || ""},staffDiscount,received);
 }
+
 export async function cancelBooking(
   id: string,
   uid: string,
@@ -1119,7 +1040,7 @@ export async function cancelBooking(
       doc(db, "bookingLocks", key),
     );
     const locks = await Promise.all(lockRefs.map((r: any) => tx.get(r)));
-    const refundAmount = Number(d.paymentReceived || 0);
+    const refundAmount = cancellationQuote(d).refund;
     tx.update(ref, {
       status: "Cancelled",
       revokedBy: uid,
@@ -1148,7 +1069,9 @@ export async function updateRefund(
   status: string,
   amount?: number,
   reference?: string,
+  method = "UPI",
 ) {
+  if (status === "Processed") return processRefund(id,Number(amount),reference || "",method);
   await updateDoc(
     doc(db, "bookings", id),
     clean({
@@ -1172,6 +1095,7 @@ export async function extendBooking(
   const b: any = snapshot.data();
   if (b.status !== "Confirmed")
     throw Error("Only confirmed bookings can be extended.");
+  if(b.passDays) throw Error("Use the pass reschedule allowance or purchase a new pass.");
   if ((b.endDate || b.date) < localToday())
     throw Error("This booking has ended. Please make a new booking.");
   const timed = Boolean(b.start),
@@ -1181,9 +1105,9 @@ export async function extendBooking(
   const date = timed ? b.endDate || b.date : addDays(b.endDate || b.date, 1);
   const endDate = timed ? date : addDays(date, extra - 1);
   const end = timed ? addHours(b.end, extra) : undefined;
-  if (timed && (!b.end || end! > "19:00" || b.end < "09:00"))
-    throw Error("Extension cannot go past 7:00 PM.");
   const policy = await loadPolicy();
+  const hours=officeHours(date,policy);
+  if(timed&&(!b.end||end!>hours.end||end!<=b.end||b.end<hours.start)) throw Error(`Extension must end by ${hours.end}.`);
   if (endDate > addDays(localToday(), Number(policy.maxAdvanceDays || 60)))
     throw Error("Extension is outside the advance booking window.");
   const prices = await loadPricing();
@@ -1315,9 +1239,17 @@ export async function createBooking(input: {
   amenities?: string[];
   notes?: string;
 }) {
-  const dates = input.dates?.length ? input.dates : [input.date],
+  const policyDoc = await getDoc(doc(db,"settings","policy"));
+  const policy:any = { ...DEFAULT_POLICY, ...policyDoc.data() };
+  const holidayDocs = await getDocs(collection(db,"holidays"));
+  const holidays = holidayDocs.docs.map(d=>d.data());
+  const planDoc = input.membershipId ? await getDoc(doc(db,"membershipPlans",input.membershipId)) : null;
+  const plan:any = planDoc?.data();
+  if (input.membershipId && (!plan || plan.active === false || !PASS_ALLOWANCES[Number(plan.deskDays || plan.days)] || !["desk","cubicle"].includes(input.space))) throw Error("Choose an active 10, 20 or 30-day desk pass.");
+  const passDays = plan ? Number(plan.deskDays || plan.days) : 0;
+  const dates = passDays ? consecutiveDates(input.date,passDays,policy,holidays) : input.dates?.length ? input.dates : [input.date],
     ids = input.inventoryIds?.length ? input.inventoryIds : [input.inventoryId],
-    timed = !!input.start,
+    timed = !["desk","cubicle"].includes(input.space),
     hoursPerDay = timed
       ? Math.max(
           1,
@@ -1328,9 +1260,9 @@ export async function createBooking(input: {
     lockInventories: string[] = [];
   if (timed) {
     for (const day of dates) {
-      for (let i = 0; i < hoursPerDay; i++) {
+      for (let i = 0; i < hoursPerDay * 4; i++) {
         const [hh, mm] = (input.start || "09:00").split(":").map(Number),
-          n = hh * 60 + mm + i * 60,
+          n = hh * 60 + mm + i * 15,
           slot = `${String(Math.floor(n / 60) % 24).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
         generatedLockKeys.push(`${day}_${input.space}_${slot}`);
         lockInventories.push(ids[0]);
@@ -1346,7 +1278,20 @@ export async function createBooking(input: {
   const finalLockKeys = generatedLockKeys,
     bookingRef = doc(collection(db, "bookings")),
     expiresAt = Timestamp.fromMillis(Date.now() + 15 * 60 * 1000),
-    finalStatus = input.status || "Pending";
+    finalStatus = "Pending";
+  const sessions = Object.fromEntries(dates.map(day=>{
+    const h = officeHours(day,policy,holidays);
+    if (h.closed) throw Error(`${day}: ${h.reason}. Choose an open day.`);
+    if (timed && input.start && (minutes(input.start)%15!==0 || minutes(input.end||"")-minutes(input.start)!==hoursPerDay*60)) throw Error("Hourly rooms use 15-minute start times and whole-hour durations.");
+    if (timed && (!input.start || !input.end || input.start < h.start || input.end > h.end || input.start >= input.end)) throw Error(`Bookings on ${day} must be within ${h.start}–${h.end}.`);
+    return [day,{start:timed ? input.start! : h.start,end:timed ? input.end! : h.end}];
+  }));
+  if (dates[0]<localToday() || dates[0]>addDays(localToday(),policy.maxAdvanceDays)) throw Error("Choose a start within the advance booking window.");
+  if (timeAt(dates[0],sessions[dates[0]].end)<=Date.now()) throw Error("This session has already ended.");
+  const base = passDays ? Number(plan.price) * ids.length : input.base;
+  const total = passDays ? base + (input.addons || []).reduce((n,a)=>n+Number(a.total || 0),0) : input.total;
+  const lastDate = dates[dates.length-1];
+  if (passDays && ids.length!==1) throw Error("Choose one desk per personal pass. Create another pass for another customer.");
   if (finalLockKeys.length > 450)
     throw Error(
       "Please split this reservation into smaller date ranges (maximum 450 desk-days per booking).",
@@ -1358,6 +1303,11 @@ export async function createBooking(input: {
         doc(db, "bookingLocks", k.replace(/[^a-zA-Z0-9_-]/g, "-")),
       ),
       locks = await Promise.all(lockRefs.map((r) => tx.get(r)));
+    // Existing reservations used one lock per hour. Read those guard slots too,
+    // so quarter-hour bookings cannot overlap reservations made by earlier builds.
+    const legacyRefs=timed ? [...new Set(dates.flatMap(d=>Array.from({length:Math.ceil(minutes(input.end!)/60)-Math.floor(minutes(input.start!)/60)},(_,i)=>`${d}_${input.space}_${String(Math.floor(minutes(input.start!)/60)+i).padStart(2,"0")}-00`)))].map(id=>doc(db,"bookingLocks",id)) : [];
+    const legacyLocks=await Promise.all(legacyRefs.map(r=>tx.get(r)));
+    if (legacyLocks.some(l=>{if(!l.exists())return false;const x=l.data();return (x.status==="Confirmed"||x.status==="Pending"&&x.expiresAt?.toMillis()>Date.now())&&minutes(x.start)<minutes(input.end!)&&minutes(x.end)>minutes(input.start!);})) throw Error("This room overlaps an existing reservation. Choose another time.");
     if (input.extensionOf) {
       const parent = await tx.get(doc(db, "bookings", input.extensionOf));
       if (!parent.exists() || parent.data().status !== "Confirmed")
@@ -1389,22 +1339,27 @@ export async function createBooking(input: {
       err.conflicts = conflicts;
       throw err;
     }
+    const customer=await tx.get(doc(db,"users",input.userId));
+    const billing={company:customer.data()?.company||"",gstNumber:customer.data()?.gstNumber||"",address:customer.data()?.billingAddress||""};
     const payload = clean({
+      billing,
       ...input,
-      dates,
-      endDate: input.endDate || dates[dates.length - 1],
-      days: input.days || dates.length,
+      date:dates[0],dates,endDate:lastDate,days:dates.length,
+      base,total,discount:passDays ? 0 : input.discount,
+      sessions,
+      ...(passDays ? {passDays,passName:plan.name,originalEndDate:lastDate,rescheduleAllowance:PASS_ALLOWANCES[passDays],rescheduleUsed:0,minimumAdvance:Math.ceil(total*Number(plan.minimumAdvancePercent || policy.minimumAdvancePercent))/100,balanceDueDate:[addDays(dates[0],Number(plan.balanceDueDays ?? policy.balanceDueDays)),lastDate].sort()[0]} : {}),
+      cancellationPolicy:{hours:Number(policy.cancellationHours),refundPercent:Number(policy.cancellationRefundPercent)},
       inventoryIds: ids,
       lockIds: lockRefs.map((r) => r.id),
       status: finalStatus,
-      expiresAt: finalStatus === "Confirmed" ? null : expiresAt,
+      expiresAt,
       paymentStatus: "Pending",
       paymentReceived: 0,
       passToken: crypto.randomUUID(),
       passValidFrom: Timestamp.fromDate(new Date(`${dates[0]}T00:00:00+05:30`)),
       passValidUntil: Timestamp.fromDate(
         new Date(
-          `${addDays(input.endDate || dates[dates.length - 1], 1)}T00:00:00+05:30`,
+          `${addDays(lastDate, 1)}T00:00:00+05:30`,
         ),
       ),
       refundStatus: "Not Requested",
@@ -1424,10 +1379,10 @@ export async function createBooking(input: {
           inventoryId: lockInventories[i],
           date: day,
           start: slot,
-          end: timed ? addHours(slot || "09:00", 1) : null,
+          end: timed ? addHours(slot || "09:00", 0.25) : null,
           userId: input.userId,
           status: finalStatus,
-          expiresAt: finalStatus === "Confirmed" ? null : expiresAt,
+          expiresAt,
           updatedAt: serverTimestamp(),
         }),
       );

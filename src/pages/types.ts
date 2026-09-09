@@ -113,6 +113,13 @@ export type Booking = {
   }>;
   amenities?: string[];
   notes?: string;
+  billing?: {company:string;gstNumber:string;address:string};
+  passDays?: number;
+  minimumAdvance?: number;
+  balanceDueDate?: string;
+  rescheduleAllowance?: number;
+  rescheduleUsed?: number;
+  sessions?: Record<string, {start: string; end: string}>;
 };
 export const ADMIN_EMAIL = "vsshegur@gmail.com";
 export const ADMIN_EMAILS = ["vsshegur@gmail.com", "navingaddam2@gmail.com"];

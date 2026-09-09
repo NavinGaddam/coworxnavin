@@ -1,3 +1,4 @@
+import { balance, money, officeHours, sessionHours } from "../lib/business";
 import { lazy, Suspense, useState } from "react";
 import {
   ArrowDown,
@@ -39,6 +40,8 @@ export default function CustomerHome({
   prices,
   user,
   bookings = [],
+  profile = {},
+  policy = {},
   activeLocks = [],
   offers = [],
   nav,
@@ -49,6 +52,15 @@ export default function CustomerHome({
   const [tour, setTour] = useState<"video" | "360" | null>(null),
     [dismissed, setDismissed] = useState<string[]>([]);
   const today = localToday();
+  const hours=officeHours(today,policy);
+  const upcomingDate=(b:any)=>(b.dates||[b.date]).find((d:string)=>d>=today) || b.endDate || b.date;
+  const reminders=bookings.filter((b:any)=>b.status==="Confirmed").flatMap((b:any)=>{
+    const messages:string[]=[];const pref=profile?.reminderPreferences||{};
+    if(pref.balance!==false&&balance(b)>0&&b.balanceDueDate)messages.push(`${money(balance(b))} pass balance ${b.balanceDueDate<today?"overdue since":"due"} ${b.balanceDueDate}`);
+    if(pref.expiry!==false&&b.passDays&&b.endDate>=today&&new Date(b.endDate).getTime()-new Date(today).getTime()<=3*86400000)messages.push(`Your ${b.passDays}-day pass ends ${b.endDate}.`);
+    if(pref.booking!==false&&upcomingDate(b)===today)messages.push(`You’re booked today · ${b.label} · until ${sessionHours(b,today).end}.`);
+    return messages;
+  });
   const next = [...bookings]
     .filter(
       (b) =>
@@ -58,7 +70,7 @@ export default function CustomerHome({
         (b.endDate || b.date) >= today,
     )
     .sort((a, b) =>
-      (a.date + (a.start || "")).localeCompare(b.date + (b.start || "")),
+      (upcomingDate(a) + (a.start || "")).localeCompare(upcomingDate(b) + (b.start || "")),
     )[0];
   const occupied = new Set([
     ...activeLocks
@@ -161,7 +173,7 @@ export default function CustomerHome({
               <div className="memberAvailability">
                 <span className="liveDot" />{" "}
                 {availabilityLoaded
-                  ? `${Math.max(0, 22 - occupied.size)} desks available today`
+                  ? hours.closed ? hours.reason : `${Math.max(0, 22 - occupied.size)} desks available today · ${hours.start}–${hours.end}`
                   : "Loading today’s availability…"}
                 <button className="textButton" onClick={() => book("desk")}>
                   Find your spot <ArrowRight size={14} />
@@ -178,7 +190,7 @@ export default function CustomerHome({
               <h3>{next ? next.label : "Your workspace is waiting."}</h3>
               <p>
                 {next
-                  ? `${next.date}${next.endDate && next.endDate !== next.date ? ` → ${next.endDate}` : ""} · ${next.start || "09:00"}–${next.end || "19:00"}`
+                  ? `${upcomingDate(next)} · ${sessionHours(next,upcomingDate(next)).start}–${sessionHours(next,upcomingDate(next)).end}${next.passDays ? ` · Pass ends ${next.endDate}` : ""}`
                   : "Choose a desk, meet your team, or record your next idea."}
               </p>
               <span>
@@ -187,6 +199,7 @@ export default function CustomerHome({
               </span>
             </button>
           </div>
+          {reminders.length>0&&<div className="memberReminders">{reminders.slice(0,4).map((text,i)=><button className="noticeBox" key={i} onClick={()=>nav("bookings")}>{text} <ArrowRight size={17}/></button>)}</div>}
           {offers[0] && (
             <button className="memberOffer" onClick={() => nav("offers")}>
               <Gift size={18} />

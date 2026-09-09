@@ -11,12 +11,12 @@ service cloud.firestore {
       return owner() || rosterAdmin() ? 'Admin' : signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role','User') in ['Manager','Receptionist'] ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : 'User';
     }
     function defaultPermission(r,p) {
-      return r == 'Admin' || r == 'Manager' && p in ['bookingsView','bookingsCreate','bookingsConfirm','bookingsCancel','bookingsDiscount','bookingsExtend','checkIn','checkOut','customersView','customersCreate','customersEdit','enquiriesManage','revenueView','resourcesManage','noticesManage','communicationsManage'] || r == 'Receptionist' && p in ['bookingsView','bookingsCreate','checkIn','checkOut','customersView','customersCreate','enquiriesManage'];
+      return r == 'Admin' || r == 'Manager' && p in ['paymentsCollect','collectionsView','passesView','passesReschedule','bookingsView','bookingsCreate','bookingsCancel','bookingsDiscount','bookingsExtend','checkIn','checkOut','customersView','customersCreate','customersEdit','enquiriesManage','revenueView','resourcesManage','noticesManage','communicationsManage'] || r == 'Receptionist' && p in ['paymentsCollect','collectionsView','passesView','passesReschedule','bookingsView','bookingsCreate','checkIn','checkOut','customersView','customersCreate','enquiriesManage'];
     }
     function configuredPermission(r,p) {
       return r != 'User' && (exists(/databases/$(database)/documents/settings/permissions) ? get(/databases/$(database)/documents/settings/permissions).data.get(r, {}).get(p, defaultPermission(r,p)) == true : defaultPermission(r,p));
     }
-    function can(p) { return owner() || verified() && configuredPermission(role(),p); }
+    function can(p) { return (p != 'passExceptions' || role() == 'Admin') && (owner() || verified() && configuredPermission(role(),p)); }
     function self(uid) { return signedIn() && request.auth.uid == uid; }
     function own(b) { return signedIn() && (b.get('userId','') == request.auth.uid || verified() && b.get('customerEmail','').lower() == email()); }
     function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
@@ -25,6 +25,17 @@ service cloud.firestore {
       let a = getAfter(/databases/$(database)/documents/roleAssignments/$(request.resource.data.get('roleAssignmentId','none'))).data;
       return verified() && a.email == email() && a.status == 'accepted' && a.role == request.resource.data.role && a.role in ['Manager','Receptionist'] && changedOnly(['role','roleAssignmentId','updatedAt']);
     }
+    function managedSetting(id) {
+      return id in ['pricing','deskPricing'] && can('pricingManage') ||
+        id == 'company' && can('companyManage') ||
+        id == 'upi' && can('paymentsManage') ||
+        id == 'wifi' && can('wifiManage') ||
+        id in ['policy','shifts'] && can('policyManage') ||
+        id == 'operations' && can('pricingManage') ||
+        id == 'notificationTemplates' && can('communicationsManage') ||
+        id == 'permissions' && can('teamManage') ||
+        id == 'admins' && can('teamManage') && request.resource.data.emails.hasAll(['vsshegur@gmail.com','navingaddam2@gmail.com']);
+    }
     match /users/{uid} {
       allow read: if self(uid) || can('customersView') || can('teamManage') || verified() && resource.data.email == email();
       allow create: if request.resource.data.uid == uid && (
@@ -32,7 +43,7 @@ service cloud.firestore {
         can('customersCreate') && request.resource.data.role == 'User' && request.resource.data.createdFrom == 'staff_walk_in' && request.resource.data.createdByUid == request.auth.uid && request.resource.data.keys().hasOnly(['uid','email','name','phone','gender','dob','age','profession','role','createdFrom','createdByUid','createdAt','updatedAt']) && request.resource.data.email is string && request.resource.data.name is string && request.resource.data.phone is string && request.resource.data.dob is string && request.resource.data.profession is string
       );
       allow update: if identityUnchanged() && (
-        self(uid) && changedOnly(['name','photoURL','phone','mobile','gender','dob','age','profession','preferredDesk','updatedAt']) || can('customersEdit') && changedOnly(['name','photoURL','phone','mobile','gender','dob','age','profession','preferredDesk','notes','company','customerNotes','vip','updatedAt']) ||
+        self(uid) && changedOnly(['name','photoURL','phone','mobile','gender','dob','age','profession','preferredDesk','company','gstNumber','billingAddress','reminderPreferences','updatedAt']) || can('customersEdit') && changedOnly(['name','photoURL','phone','mobile','gender','dob','age','profession','preferredDesk','notes','company','gstNumber','billingAddress','reminderPreferences','customerNotes','vip','updatedAt']) ||
         can('customersBlock') && changedOnly(['blocked','blockedReason','updatedAt']) ||
         can('catalogManage') && changedOnly(['membershipId','membershipName','membershipRemaining','updatedAt']) ||
         can('teamManage') && !ownerEmail(resource.data.email) && request.resource.data.role in ['Admin','Manager','Receptionist','User'] && changedOnly(['role','roleAssignmentId','updatedAt']) ||
@@ -47,17 +58,9 @@ service cloud.firestore {
       allow update: if can('teamManage') && !ownerEmail(resource.data.email) && request.resource.data.email == resource.data.email || verified() && resource.data.email == email() && resource.data.status in ['pending','accepted'] && resource.data.role in ['Manager','Receptionist'] && request.resource.data.status == 'accepted' && request.resource.data.acceptedAt == request.time && changedOnly(['status','acceptedAt']);
     }
     match /settings/{id} {
-      allow read: if id == 'pricing' || signedIn() && id in ['deskPricing','upi','policy','operations','notificationTemplates','permissions','shifts','admins','company','wifi'];
-      allow create, update: if
-        id in ['pricing','deskPricing'] && can('pricingManage') ||
-        id == 'company' && can('companyManage') ||
-        id == 'upi' && can('paymentsManage') ||
-        id == 'wifi' && can('wifiManage') ||
-        id in ['policy','shifts'] && can('policyManage') ||
-        id == 'operations' && can('pricingManage') ||
-        id == 'notificationTemplates' && can('communicationsManage') ||
-        id == 'permissions' && can('teamManage') ||
-        id == 'admins' && can('teamManage') && request.resource.data.emails.hasAll(['vsshegur@gmail.com','navingaddam2@gmail.com']);
+      allow read: if id in ['pricing','policy'] || signedIn() && id in ['deskPricing','upi','policy','operations','notificationTemplates','permissions','shifts','admins','company','wifi'];
+      allow create: if managedSetting(id) || id == 'policy' && can('resourcesManage') && request.resource.data.keys().hasOnly(['calendar']);
+      allow update: if managedSetting(id) || id == 'policy' && can('resourcesManage') && changedOnly(['calendar']);
     }
     match /banners/{id} { allow read: if true; allow write: if can('noticesManage'); }
     match /notices/{id} { allow read: if true; allow write: if can('noticesManage'); }
@@ -81,52 +84,107 @@ service cloud.firestore {
       let t = request.time + duration.value(330,'m');
       return string(t.year()) + '-' + (t.month() < 10 ? '0' : '') + string(t.month()) + '-' + (t.day() < 10 ? '0' : '') + string(t.day());
     }
-    function bookingToday(b) { return b.status == 'Confirmed' && b.date <= today() && b.get('endDate',b.date) >= today(); }
+    function bookingToday(b) { return b.status == 'Confirmed' && today() in b.get('dates',[b.date]); }
+    function dateStamp(d) { let p=d.split('-'); return timestamp.date(int(p[0]),int(p[1]),int(p[2])); }
+    function policy() { return exists(/databases/$(database)/documents/settings/policy) ? get(/databases/$(database)/documents/settings/policy).data : {}; }
+    // Holiday writes keep this calendar in sync. Using one policy document here
+    // also keeps a 30-day pass below Firestore's batched-rule read limit.
+    function openDay(d) { return dateStamp(d).dayOfWeek() != 7 && policy().get('calendar',{}).get(d,{}).get('closed',false) != true; }
+    function officeFor(d) { let p=policy();return p.get('calendar',{}).get(d,{'start':p.get('businessStart','09:00'),'end':p.get('businessEnd','19:00'),'closed':false}); }
+    function validSession(b,d) { let h=officeFor(d);let t=session(b,d);return openDay(d) && t.start >= h.start && t.end <= h.end && t.start < t.end && (b.space in ['desk','cubicle'] ? t.start == h.start && t.end == h.end : t.start == b.start && t.end == b.end); }
+    function cancelAmount(b) { let c=b.get('cancellationPolicy',{'hours':24,'refundPercent':100});let start=dateStamp(b.date)+duration.value(timeMinutes(session(b,b.date).start)-330,'m');return b.status == 'Pending' || request.time <= start-duration.value(c.hours,'h') ? math.round(b.get('paymentReceived',0)*c.refundPercent) / 100 : 0; }
+    function clockMinutes() { let t=request.time+duration.value(330,'m'); return t.hours()*60+t.minutes(); }
+    function timeMinutes(t) { return int(t.split(':')[0])*60+int(t.split(':')[1]); }
+    function session(b,d) { return b.get('sessions',{}).get(d,{'start':b.get('start','09:00'),'end':b.get('end','19:00')}); }
+    function entryPaid(b) { return b.get('passDays',0) > 0 ? b.get('paymentReceived',0) >= b.minimumAdvance && (b.paymentReceived >= b.total || today() <= b.balanceDueDate) : b.get('paymentReceived',0) >= b.total; }
     function validCheckIn() {
-      let b = resource.data;
-      let n = request.resource.data;
-      return changedOnly(['attendanceDate','checkedInAt','checkedInBy','checkedOutAt','checkedOutBy']) && can('checkIn') && bookingToday(b) && (b.get('attendanceDate','') != today() || b.get('checkedInAt',null) == null) && n.attendanceDate == today() && n.checkedInAt == request.time && n.checkedInBy == request.auth.uid && n.checkedOutAt == null && n.checkedOutBy == null && changedOnly(['attendanceDate','checkedInAt','checkedInBy','checkedOutAt','checkedOutBy']);
+      let b=resource.data; let n=request.resource.data; let h=session(b,today());
+      return changedOnly(['attendanceDate','checkedInAt','checkedInBy','checkedOutAt','checkedOutBy']) && can('checkIn') && bookingToday(b) && entryPaid(b) && clockMinutes() >= timeMinutes(h.start) && clockMinutes() < timeMinutes(h.end) && (b.get('attendanceDate','') != today() || b.get('checkedInAt',null) == null || b.get('checkedOutAt',null) != null) && n.attendanceDate == today() && n.checkedInAt == request.time && n.checkedInBy == request.auth.uid && n.checkedOutAt == null && n.checkedOutBy == null;
     }
     function validCheckOut() {
-      let b = resource.data;
-      let n = request.resource.data;
-      return changedOnly(['checkedOutAt','checkedOutBy']) && can('checkOut') && bookingToday(b) && b.get('attendanceDate','') == today() && b.get('checkedInAt',null) != null && b.get('checkedOutAt',null) == null && n.checkedOutAt == request.time && n.checkedOutBy == request.auth.uid && changedOnly(['checkedOutAt','checkedOutBy']);
+      let b=resource.data;let n=request.resource.data;
+      return changedOnly(['checkedOutAt','checkedOutBy']) && can('checkOut') && bookingToday(b) && b.get('attendanceDate','') == today() && b.get('checkedInAt',null) != null && b.get('checkedOutAt',null) == null && n.checkedOutAt == request.time && n.checkedOutBy == request.auth.uid;
     }
     function extensionAllowed(b) {
       let parent = getAfter(/databases/$(database)/documents/bookings/$(b.extensionOf)).data;
       return parent.status == 'Confirmed' && parent.userId == b.userId && (own(parent) || can('bookingsExtend'));
     }
-      function validPayment() { return changedOnly(['status','staffDiscount','total','confirmedBy','confirmedAt','expiresAt','paymentReceived','paymentMethod','paymentRef','paymentStatus','invoiceNumber']) && can('bookingsConfirm') && active(resource.data) && request.resource.data.status == 'Confirmed' && request.resource.data.expiresAt == null && request.resource.data.paymentReceived is number && request.resource.data.paymentReceived >= resource.data.get('paymentReceived',0) && request.resource.data.paymentReceived <= request.resource.data.total && request.resource.data.total == resource.data.total + resource.data.get('staffDiscount',0) - request.resource.data.staffDiscount && request.resource.data.total >= 0 && request.resource.data.staffDiscount >= 0 && (request.resource.data.staffDiscount == resource.data.get('staffDiscount',0) || can('bookingsDiscount')) && request.resource.data.confirmedBy == request.auth.uid && request.resource.data.confirmedAt == request.time && changedOnly(['status','staffDiscount','total','confirmedBy','confirmedAt','expiresAt','paymentReceived','paymentMethod','paymentRef','paymentStatus','invoiceNumber']); }
-    function validCancellation() { return changedOnly(['status','revokedBy','revokedAt','expiresAt','cancellationReason','refundStatus','refundAmount']) && (own(resource.data) || can('bookingsCancel')) && resource.data.status in ['Pending','Confirmed'] && request.resource.data.status == 'Cancelled' && request.resource.data.revokedBy == request.auth.uid && request.resource.data.revokedAt == request.time && request.resource.data.refundAmount == resource.data.get('paymentReceived',0) && request.resource.data.refundStatus == (resource.data.get('paymentReceived',0) > 0 ? 'Pending' : 'Not Requested') && changedOnly(['status','revokedBy','revokedAt','expiresAt','cancellationReason','refundStatus','refundAmount']); }
-    function validRefund() { return changedOnly(['refundStatus','refundAmount','refundReference','refundProcessedBy','refundProcessedAt','paymentStatus']) && can('refundsManage') && resource.data.status == 'Cancelled' && resource.data.get('refundStatus','') != 'Processed' && request.resource.data.refundAmount >= 0 && request.resource.data.refundAmount <= resource.data.get('paymentReceived',0) && changedOnly(['refundStatus','refundAmount','refundReference','refundProcessedBy','refundProcessedAt','paymentStatus']); }
-    function validPassCreation() { return changedOnly(['passToken','passValidFrom','passValidUntil']) && (own(resource.data) || can('bookingsView')) && resource.data.status == 'Confirmed' && resource.data.get('passToken','') == '' && request.resource.data.passToken is string && request.resource.data.passToken.size() >= 32 && changedOnly(['passToken','passValidFrom','passValidUntil']); }
-    function bookingUpdate() {
+    function validPayment(id) {
+      let b=resource.data;let n=request.resource.data;let p=getAfter(/databases/$(database)/documents/payments/$(n.lastPaymentId)).data;
+      return changedOnly(['status','staffDiscount','total','confirmedBy','confirmedAt','expiresAt','paymentReceived','paymentMethod','paymentRef','paymentStatus','invoiceNumber','lastPaymentId']) && can('paymentsCollect') && active(b) && n.status == 'Confirmed' && n.expiresAt == null && n.paymentReceived >= b.get('paymentReceived',0) && n.paymentReceived <= n.total && n.total == b.total+b.get('staffDiscount',0)-n.staffDiscount && n.total >= 0 && n.staffDiscount >= 0 && (n.staffDiscount == b.get('staffDiscount',0) || b.status == 'Pending' && can('bookingsDiscount')) && (b.get('passDays',0) > 0 ? n.paymentReceived >= b.minimumAdvance || n.paymentReceived == n.total : n.paymentReceived == n.total) && n.paymentStatus == (n.paymentReceived == n.total ? 'Paid' : 'Partially Paid') && n.confirmedBy == request.auth.uid && n.confirmedAt == request.time && p.bookingId == id && p.kind == 'Collection' && p.amount == n.paymentReceived-b.get('paymentReceived',0) && p.createdAt == request.time;
+    }
+    function validCorrection(id) {
+      let b=resource.data;let n=request.resource.data;let p=getAfter(/databases/$(database)/documents/payments/$(n.lastPaymentId)).data;
+      return can('paymentsCorrect') && changedOnly(['paymentReceived','paymentStatus','lastPaymentId']) && b.status == 'Confirmed' && n.paymentReceived >= 0 && p.bookingId == id && p.kind == 'Correction' && p.amount == b.paymentReceived-n.paymentReceived && p.createdAt == request.time && n.paymentStatus == (n.paymentReceived >= n.total ? 'Paid' : n.paymentReceived > 0 ? 'Partially Paid' : 'Pending');
+    }
+    function validReschedule(id) {
+      let b=resource.data;let n=request.resource.data;let e=getAfter(/databases/$(database)/documents/passChanges/$(n.lastPassChangeId)).data;
+      return changedOnly(['date','dates','endDate','lockIds','sessions','rescheduleUsed','lastPassChangeId','passValidFrom','passValidUntil']) && b.get('passDays',0) > 0 && b.status == 'Confirmed' && (own(b) || can('passesReschedule')) && e.bookingId == id && e.kind == 'Reschedule' && e.actorUid == request.auth.uid && e.createdAt == request.time && e.from in b.dates && !(e.to in b.dates) && validSession(n,e.to) && dateStamp(e.to) <= dateStamp(b.originalEndDate) + duration.value(policy().get('rescheduleWindowDays',30),'d') && e.to >= b.date && (e.from > today() || e.from == today() && clockMinutes() < timeMinutes(session(b,e.from).start)) && (e.to > today() || e.to == today() && clockMinutes() < timeMinutes(session(n,e.to).start)) && n.dates.size() == b.dates.size() && n.dates.toSet().difference(b.dates.toSet()) == [e.to].toSet() && b.dates.toSet().difference(n.dates.toSet()) == [e.from].toSet() && n.rescheduleUsed == b.get('rescheduleUsed',0)+1 && n.rescheduleUsed <= b.rescheduleAllowance && n.lockIds.size() == b.lockIds.size() && n.sessions.diff(b.sessions).affectedKeys().hasOnly([e.from,e.to]) && rescheduleLocks(id,b,n,e);
+    }
+    function rescheduleLocks(id,b,n,e) {
+      let oldId=e.from+'_'+b.inventoryIds[0]+'_day';let newId=e.to+'_'+b.inventoryIds[0]+'_day';
+      let old=getAfter(/databases/$(database)/documents/bookingLocks/$(oldId)).data;let next=getAfter(/databases/$(database)/documents/bookingLocks/$(newId)).data;
+      return b.inventoryIds.size()==1 && n.lockIds.toSet().difference(b.lockIds.toSet()) == [newId].toSet() && b.lockIds.toSet().difference(n.lockIds.toSet()) == [oldId].toSet() && old.status == 'Cancelled' && old.bookingId == id && next.status == 'Confirmed' && next.bookingId == id && next.date == e.to;
+    }
+    function validException(id) {
+      let b=resource.data;let n=request.resource.data;let e=getAfter(/databases/$(database)/documents/passChanges/$(n.lastPassChangeId)).data;
+      return can('passExceptions') && changedOnly(['rescheduleAllowance','lastPassChangeId']) && b.get('passDays',0)>0 && b.status == 'Confirmed' && e.bookingId == id && e.kind == 'Exception' && e.extra is int && e.extra>0 && e.extra<=30 && n.rescheduleAllowance == b.rescheduleAllowance+e.extra && e.actorUid == request.auth.uid && e.createdAt == request.time;
+    }
+    function validCancellation() { return changedOnly(['status','revokedBy','revokedAt','expiresAt','cancellationReason','refundStatus','refundAmount']) && (own(resource.data) || can('bookingsCancel')) && resource.data.status in ['Pending','Confirmed'] && request.resource.data.status == 'Cancelled' && request.resource.data.revokedBy == request.auth.uid && request.resource.data.revokedAt == request.time && request.resource.data.refundAmount == cancelAmount(resource.data) && request.resource.data.refundStatus == (request.resource.data.refundAmount > 0 ? 'Pending' : 'Not Requested') && changedOnly(['status','revokedBy','revokedAt','expiresAt','cancellationReason','refundStatus','refundAmount']); }
+    function validRefund() { return changedOnly(['refundStatus','refundAmount','refundReference','refundProcessedBy','refundProcessedAt','paymentStatus','lastPaymentId']) && can('refundsManage') && resource.data.status == 'Cancelled' && resource.data.get('refundStatus','') != 'Processed' && request.resource.data.refundAmount >= 0 && request.resource.data.refundAmount <= resource.data.get('paymentReceived',0) && (request.resource.data.refundStatus != 'Processed' || getAfter(/databases/$(database)/documents/payments/$(request.resource.data.lastPaymentId)).data.kind == 'Refund') && changedOnly(['refundStatus','refundAmount','refundReference','refundProcessedBy','refundProcessedAt','paymentStatus','lastPaymentId']); }
+    function validPassCreation() { return changedOnly(['passToken','passValidFrom','passValidUntil']) && (own(resource.data) || can('bookingsView')) && resource.data.status == 'Confirmed' && entryPaid(resource.data) && resource.data.get('passToken','') == '' && request.resource.data.passToken is string && request.resource.data.passToken.size() >= 32 && changedOnly(['passToken','passValidFrom','passValidUntil']); }
+    function bookingUpdate(id) {
       let changes=request.resource.data.diff(resource.data).affectedKeys();
-      return changes.hasAny(['attendanceDate','checkedInAt']) ? validCheckIn() :
+      return changes.hasAny(['rescheduleAllowance']) ? validException(id) : changes.hasAny(['rescheduleUsed']) ? validReschedule(id) : changes.hasAny(['paymentReceived']) && request.resource.data.paymentReceived < resource.data.get('paymentReceived',0) ? validCorrection(id) : changes.hasAny(['attendanceDate','checkedInAt']) ? validCheckIn() :
         changes.hasAny(['checkedOutAt']) ? validCheckOut() :
         changes.hasAny(['passToken']) ? validPassCreation() :
         request.resource.data.status == 'Cancelled' && resource.data.status != 'Cancelled' ? validCancellation() :
-        changes.hasAny(['refundStatus','refundAmount','refundReference','refundProcessedAt']) ? validRefund() : validPayment();
+        changes.hasAny(['refundStatus','refundAmount','refundReference','refundProcessedAt']) ? validRefund() : validPayment(id);
     }
 
+    function validPassTerms(b) {
+      let plan=get(/databases/$(database)/documents/membershipPlans/$(b.get('membershipId','none'))).data;
+      return b.get('passDays',0) == 0 || b.passDays in [10,20,30] && b.inventoryIds.size() == 1 && plan.active != false && b.passDays == plan.get('deskDays',plan.days) && b.base == plan.price*b.inventoryIds.size() && b.discount == 0 && b.rescheduleUsed == 0 && b.rescheduleAllowance == (b.passDays == 10 ? 1 : b.passDays == 20 ? 2 : 3) && b.dates.size() == b.passDays && b.minimumAdvance >= b.total*plan.get('minimumAdvancePercent',(exists(/databases/$(database)/documents/settings/policy) ? get(/databases/$(database)/documents/settings/policy).data.get('minimumAdvancePercent',50) : 50)) / 100 && b.balanceDueDate >= b.date && b.balanceDueDate <= b.endDate;
+    }
+    function releasedByReschedule() {
+      let b=getAfter(/databases/$(database)/documents/bookings/$(resource.data.bookingId)).data;
+      let e=getAfter(/databases/$(database)/documents/passChanges/$(b.lastPassChangeId)).data;
+      return b.status == 'Confirmed' && request.resource.data.status == 'Cancelled' && changedOnly(['status','expiresAt','updatedAt']) && e.kind == 'Reschedule' && e.from == resource.data.date && e.createdAt == request.time && e.actorUid == request.auth.uid;
+    }
+    match /payments/{id} {
+      allow read: if can('collectionsView') || can('revenueView') || own(resource.data);
+      allow create: if signedIn() && validReceipt(id);
+    }
+    function validReceipt(id) {
+      let p=request.resource.data;let b=getAfter(/databases/$(database)/documents/bookings/$(p.bookingId)).data;
+      return p.keys().hasOnly(['bookingId','userId','customerEmail','customerName','kind','amount','cashAmount','upiAmount','otherAmount','reference','actorUid','date','createdAt','receiptNumber','originalPaymentId','reason']) && b.lastPaymentId == id && p.actorUid == request.auth.uid && p.createdAt == request.time && p.date == today() && p.userId == b.userId && p.customerEmail == b.customerEmail && p.amount >= 0 && p.cashAmount >= 0 && p.upiAmount >= 0 && p.otherAmount >= 0 && p.amount == p.cashAmount+p.upiAmount+p.otherAmount && (p.kind == 'Collection' && can('paymentsCollect') || p.kind == 'Refund' && can('refundsManage') && b.status == 'Cancelled' && p.amount == b.refundAmount || p.kind == 'Correction' && can('paymentsCorrect') && id == 'reversal_'+p.originalPaymentId && p.reason.size()>0 && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.kind == 'Collection' && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.bookingId == p.bookingId && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.amount == p.amount && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.cashAmount == p.cashAmount && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.upiAmount == p.upiAmount && get(/databases/$(database)/documents/payments/$(p.originalPaymentId)).data.otherAmount == p.otherAmount);
+    }
+    match /handovers/{id} {
+      allow read: if can('collectionsView');
+      allow create: if can('collectionsView') && request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time && request.resource.data.date == today() && request.resource.data.openingCash >= 0 && request.resource.data.countedCash >= 0;
+    }
+    match /passChanges/{id} {
+      allow read: if can('passesView') || own(resource.data);
+      allow create: if signedIn() && request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time && request.resource.data.reason.size()>0 && getAfter(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.lastPassChangeId == id && request.resource.data.userId == getAfter(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.userId;
+    }
     match /bookings/{id} {
       allow read: if own(resource.data) || can('bookingsView') || can('revenueView') || can('refundsManage');
-      allow create: if signedIn() && exists(/databases/$(database)/documents/users/$(request.resource.data.userId)) && get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.get('blocked',false) != true && request.resource.data.keys().hasOnly(['date','endDate','dates','days','space','inventoryId','inventoryIds','lockKeys','lockIds','label','userId','userEmail','customerName','customerEmail','customerPhone','createdByRole','walkIn','start','end','durationHours','base','discount','total','offerId','couponCode','membershipId','referralCode','status','addons','amenities','notes','extensionOf','expiresAt','paymentStatus','paymentReceived','passToken','passValidFrom','passValidUntil','refundStatus','createdAt']) &&
+      allow create: if signedIn() && exists(/databases/$(database)/documents/users/$(request.resource.data.userId)) && get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.get('blocked',false) != true && request.resource.data.keys().hasOnly(['date','endDate','dates','days','space','inventoryId','inventoryIds','lockKeys','lockIds','label','userId','userEmail','customerName','customerEmail','customerPhone','createdByRole','walkIn','start','end','durationHours','base','discount','total','offerId','couponCode','membershipId','referralCode','status','addons','amenities','notes','extensionOf','expiresAt','paymentStatus','paymentReceived','passToken','passValidFrom','passValidUntil','refundStatus','createdAt','sessions','billing','cancellationPolicy','passDays','passName','originalEndDate','rescheduleAllowance','rescheduleUsed','minimumAdvance','balanceDueDate']) &&
         (request.resource.data.get('extensionOf','') != '' ? extensionAllowed(request.resource.data) : request.resource.data.userId == request.auth.uid && request.resource.data.customerEmail == email() || can('bookingsCreate') && exists(/databases/$(database)/documents/users/$(request.resource.data.userId))) &&
         request.resource.data.date >= today() && request.resource.data.endDate >= request.resource.data.date &&
-        request.resource.data.paymentReceived == 0 && request.resource.data.paymentStatus == 'Pending' && request.resource.data.refundStatus == 'Not Requested' && request.resource.data.base is number && request.resource.data.base >= 0 && request.resource.data.total is number && request.resource.data.total >= 0 && request.resource.data.discount is number && request.resource.data.discount >= 0 && request.resource.data.discount <= request.resource.data.base && request.resource.data.lockIds.size() > 0 &&
-        (request.resource.data.status == 'Pending' && request.resource.data.expiresAt > request.time && request.resource.data.expiresAt <= request.time + duration.value(16,'m') || request.resource.data.status == 'Confirmed' && can('bookingsConfirm') && request.resource.data.expiresAt == null);
-      allow update: if bookingUpdate();
+        request.resource.data.cancellationPolicy.hours == policy().get('cancellationHours',24) && request.resource.data.cancellationPolicy.refundPercent == policy().get('cancellationRefundPercent',100) && request.resource.data.paymentReceived == 0 && request.resource.data.paymentStatus == 'Pending' && request.resource.data.refundStatus == 'Not Requested' && request.resource.data.base is number && request.resource.data.base >= 0 && request.resource.data.total is number && request.resource.data.total >= 0 && request.resource.data.discount is number && request.resource.data.discount >= 0 && request.resource.data.discount <= request.resource.data.base && request.resource.data.lockIds.size() > 0 &&
+        request.resource.data.status == 'Pending' && request.resource.data.expiresAt > request.time && request.resource.data.expiresAt <= request.time + duration.value(16,'m') && (request.resource.data.get('passDays',0) == 0 || validPassTerms(request.resource.data));
+      allow update: if bookingUpdate(id);
     }
     function lockMatchesBooking(id) {
       let n = request.resource.data;
       let b = getAfter(/databases/$(database)/documents/bookings/$(n.bookingId)).data;
-      return n.userId == b.userId && n.status == b.status && n.expiresAt == b.expiresAt && id in b.lockIds && n.date in b.dates && n.inventoryId in b.inventoryIds && (own(b) || can('bookingsCreate') || can('bookingsConfirm') || can('bookingsCancel') || can('bookingsExtend'));
+      return n.userId == b.userId && n.status == b.status && n.expiresAt == b.expiresAt && id in b.lockIds && n.date in b.dates && n.inventoryId in b.inventoryIds && (n.status != 'Pending' || validSession(b,n.date)) && (own(b) || can('bookingsCreate') || can('paymentsCollect') || can('passesReschedule') || can('bookingsCancel') || can('bookingsExtend'));
     }
     match /bookingLocks/{id} {
       allow read: if signedIn();
       allow create: if signedIn() && lockMatchesBooking(id);
-      allow update: if signedIn() && lockMatchesBooking(id) && (!active(resource.data) || request.resource.data.bookingId == resource.data.bookingId && request.resource.data.inventoryId == resource.data.inventoryId && request.resource.data.date == resource.data.date);
+      allow update: if signedIn() && (releasedByReschedule() || lockMatchesBooking(id)) && (!active(resource.data) || request.resource.data.bookingId == resource.data.bookingId && request.resource.data.inventoryId == resource.data.inventoryId && request.resource.data.date == resource.data.date);
     }
     match /attendance/{id} {
       allow read: if can('bookingsView') || signedIn() && resource.data.userId == request.auth.uid;

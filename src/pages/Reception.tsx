@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { bookingOn, paymentAccessError, sessionHours, sessionState } from "../lib/business";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
@@ -15,6 +16,7 @@ import { attendanceError } from "../lib/booking-pass";
 import { localToday } from "./types";
 export default function Reception({
   bookings = [],
+  scanRequest = 0,
   can,
   onFlash,
   bookCustomer,
@@ -24,15 +26,15 @@ export default function Reception({
     [selected, setSelected] = useState<any>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  useEffect(()=>{if(scanRequest)setScanner(true);},[scanRequest]);
   const today = localToday(),
     todayRows = bookings.filter(
       (b: any) =>
         b.status === "Confirmed" &&
-        b.date <= today &&
-        (b.endDate || b.date) >= today,
+        bookingOn(b,today),
     );
   const inside = todayRows.filter(
-    (b: any) => b.attendanceDate === today && b.checkedInAt && !b.checkedOutAt,
+    (b: any) => sessionState(b)==="Inside",
   );
   const rows = useMemo(
     () =>
@@ -82,7 +84,7 @@ export default function Reception({
     }
   };
   return (
-    <section className="workspacePage">
+    <section className="workspacePage receptionPage">
       <div className="pageHeading">
         <div>
           <span className="eyebrow">DAILY OPERATIONS</span>
@@ -151,14 +153,7 @@ export default function Reception({
         </div>
         <div className="guestList">
           {rows.map((b: any) => {
-            const state =
-              b.attendanceDate === today
-                ? b.checkedOutAt
-                  ? "Checked out"
-                  : b.checkedInAt
-                    ? "Inside"
-                    : "Expected"
-                : "Expected";
+            const state = sessionState(b);
             return (
               <button
                 className="guestRow"
@@ -176,7 +171,7 @@ export default function Reception({
                     {(b.inventoryIds || [])
                       .map((x: string) => x.replace("desk-", ""))
                       .join(", ")}{" "}
-                    · {b.start || "09:00"}–{b.end || "19:00"}
+                    · {sessionHours(b,today).start}–{sessionHours(b,today).end}
                   </small>
                 </span>
                 <span
@@ -215,8 +210,8 @@ export default function Reception({
             <h2>{selected.customerName || selected.customerEmail}</h2>
             <p>{selected.customerEmail}</p>
             <p>
-              {selected.label} · {selected.date} · {selected.start || "09:00"}–
-              {selected.end || "19:00"}
+              {selected.label} · {selected.date} · {sessionHours(selected,today).start}–
+              {sessionHours(selected,today).end}
             </p>
             <div className="buttonRow">
               {can("checkIn") && (
@@ -228,7 +223,7 @@ export default function Reception({
                   }
                   onClick={() => mark("in")}
                 >
-                  <LogIn size={17} /> Check in
+                  <LogIn size={17} /> {selected.checkedOutAt&&selected.attendanceDate===today?"Record re-entry":"Check in"}
                 </button>
               )}
               {can("checkOut") && (
@@ -247,7 +242,7 @@ export default function Reception({
             <p className="muted">
               {selected.attendanceDate === today && selected.checkedInAt
                 ? selected.checkedOutAt
-                  ? "Already checked out today."
+                  ? "Departure recorded. Re-entry is allowed until the session ends."
                   : "Currently checked in."
                 : "Confirm the customer’s identity before checking them in."}
             </p>
