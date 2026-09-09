@@ -1,8 +1,0 @@
-node_modules/
-dist/
-*.tsbuildinfo
-.firebase/
-*-debug.log
-test-results/
-playwright-report/
-.env.local
