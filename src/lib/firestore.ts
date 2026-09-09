@@ -83,7 +83,7 @@ export async function toggleAddon(id:string,active:boolean,uid:string){await upd
 export async function setResourceBlock(data:any,uid:string){const id=`${data.date}_${data.inventoryId}`.replace(/[^a-zA-Z0-9_-]/g,"-");await setDoc(doc(db,"resourceBlocks",id),clean({...data,active:data.active!==false,updatedBy:uid,updatedAt:serverTimestamp()}),{merge:true});}
 export async function removeResourceBlock(id:string,uid:string){await updateDoc(doc(db,"resourceBlocks",id),{active:false,updatedBy:uid,updatedAt:serverTimestamp()});}
 export async function saveShift(data:any,uid:string){await setDoc(doc(db,"settings","shifts"),{...data,updatedBy:uid,updatedAt:serverTimestamp()},{merge:true});}
-export async function savePermissions(data:any,uid:string){await setDoc(doc(db,"settings","permissions"),{...data,updatedBy:uid,updatedAt:serverTimestamp()},{merge:true});}
+export async function savePermissions(data:any,uid:string){await setDoc(doc(db,"settings","permissions"),{...data,updatedByuid,updatedAt:serverTimestamp()},{merge:true});}
 export async function loadSetting(id:string,defaults:any={}){const s=await getDoc(doc(db,"settings",id));return s.exists()?{...defaults,...s.data()}:defaults;}
 export async function confirmBooking(id:string,uid:string,staffDiscount=0,paymentReceived?:number,paymentMethod?:string,paymentRef?:string){const ref=doc(db,"bookings",id),snap=await getDoc(ref);if(!snap.exists())throw Error("Booking not found.");const d:any=snap.data(),sd=Math.max(0,Number(staffDiscount)||0),total=Math.max(0,Number(d.base||0)-Number(d.discount||0)-sd),received=paymentReceived===undefined?total:Number(paymentReceived);const paymentStatus=received>=total?"Paid":received>0?"Partially Paid":"Pending",invoiceNumber=d.invoiceNumber||`CC-${new Date().getFullYear()}-${id.slice(0,8).toUpperCase()}`;await updateDoc(ref,clean({status:"Confirmed",staffDiscount:sd,total,confirmedBy:uid,confirmedAt:serverTimestamp(),expiresAt:null,paymentReceived:received,paymentMethod:paymentMethod||"Other",paymentRef:paymentRef||"",paymentStatus,invoiceNumber,refundStatus:"Not Requested"}));for(const lockId of (d.lockIds||[id])){const lock=doc(db,"bookingLocks",lockId),ls=await getDoc(lock);if(ls.exists())await updateDoc(lock,{status:"Confirmed",staffDiscount:sd,total,confirmedBy:uid,confirmedAt:serverTimestamp(),expiresAt:null});}}
 export async function cancelBooking(id:string,uid:string,reason="Customer requested cancellation"){const ref=doc(db,"bookings",id),snap=await getDoc(ref);if(!snap.exists())throw Error("Booking not found.");const d:any=snap.data(),refundAmount=Number(d.paymentReceived||0)>0?Number(d.paymentReceived):0;await updateDoc(ref,{status:"Cancelled",revokedBy:uid,revokedAt:serverTimestamp(),expiresAt:null,cancellationReason:reason,refundStatus:refundAmount>0?"Pending":"Not Requested",refundAmount});for(const lockId of (d.lockIds||[id])){const lock=doc(db,"bookingLocks",lockId),ls=await getDoc(lock);if(ls.exists())await updateDoc(lock,{status:"Cancelled",revokedBy:uid,revokedAt:serverTimestamp(),expiresAt:null});}}
@@ -91,6 +91,70 @@ export async function revokeBooking(id:string,uid:string){const ref=doc(db,"book
 export async function updateRefund(id:string,uid:string,status:string,amount?:number,reference?:string){await updateDoc(doc(db,"bookings",id),clean({refundStatus:status,refundAmount:amount===undefined?undefined:Number(amount),refundReference:reference||"",refundProcessedBy:uid,refundProcessedAt:serverTimestamp(),paymentStatus:status==="Processed"?"Refunded":"Refund Pending"}));}
 export async function markCheckIn(id:string){await updateDoc(doc(db,"bookings",id),{checkedInAt:serverTimestamp()});}
 export async function markCheckOut(id:string){await updateDoc(doc(db,"bookings",id),{checkedOutAt:serverTimestamp()});}
-export async function extendBooking(id:string,opts:{extraHours?:number;extraDays?:number;uid:string}){const ref=doc(db,"bookings",id),snap=await getDoc(ref);if(!snap.exists())throw Error("Booking not found.");const d:any=snap.data();if(d.status!=="Confirmed")throw Error("Only confirmed bookings can be extended.");const extraHours=Math.max(0,Math.floor(opts.extraHours||0)),extraDays=Math.max(0,Math.floor(opts.extraDays||0));if(!extraHours&&!extraDays)throw Error("Choose an extension.");const isDesk=d.space==="desk"||d.space==="cubicle",inv=d.inventoryIds?.length?d.inventoryIds:[d.inventoryId],dates=d.dates?.length?d.dates:[d.date],lockRefs:any[]=[],lockData:any[]=[];let baseAdd=0;if(isDesk){for(let day=1;day<=extraDays;day++){const newDay=addDays(d.endDate||d.date,day);for(const inventoryId of inv){const idLock=`${newDay}_${inventoryId}_day`;lockRefs.push(doc(db,"bookingLocks",idLock));lockData.push({bookingId:id,userId:d.userId,inventoryId,date:newDay,start:null,end:null,status:"Confirmed",expiresAt:null,updatedAt:serverTimestamp()});}}baseAdd=extraDays>0?Math.round(Number(d.base||0)/Math.max(1,Number(d.days||dates.length)))*extraDays;}else{if(extraDays>0)throw Error("Timed rooms can be extended by hours only.");const end=d.end||d.start||"09:00",day=d.endDate||d.date;for(let i=0;i<extraHours;i++){const slot=addHours(end,i);if(slot>="19:00")throw Error("Extension cannot go past 7:00 PM.");const idLock=`${day}_${d.space}_${slot}`;lockRefs.push(doc(db,"bookingLocks",idLock));lockData.push({bookingId:id,userId:d.userId,inventoryId:d.space,date:day,start:slot,end:addHours(slot,1),status:"Confirmed",expiresAt:null,updatedAt:serverTimestamp()});}baseAdd=Math.round((Number(d.base||0)/Math.max(1,Number(d.durationHours||1)))*extraHours);}await runTransaction(db,async tx=>{const locks=await Promise.all(lockRefs.map(r=>tx.get(r)));for(const lock of locks){if(lock.exists()){const x:any=lock.data();if(x.status==="Confirmed"||(x.status==="Pending"&&(x.expiresAt?.toMillis?.()||0)>Date.now()))throw Error("The extension slot is already booked.");}}for(let i=0;i<lockRefs.length;i++)tx.set(lockRefs[i],lockData[i]);const nextDates=isDesk?[...(d.dates||dates),...Array.from({length:extraDays},(_,i)=>addDays(d.endDate||d.date,i+1))]:dates;const nextEnd=isDesk?addDays(d.endDate||d.date,extraDays):addHours(d.end||d.start||"09:00",Number(d.durationHours||1)+extraHours);tx.update(ref,{dates:nextDates,endDate:isDesk?nextEnd:d.endDate||d.date,end:isDesk?undefined:nextEnd,days:isDesk?(Number(d.days||dates.length)+extraDays):d.days,durationHours:isDesk?d.durationHours:Number(d.durationHours||0)+extraHours,base:Number(d.base||0)+baseAdd,total:Number(d.total||0)+baseAdd,extensionTotal:Number(d.extensionTotal||0)+baseAdd,updatedAt:serverTimestamp(),lastExtendedBy:opts.uid});});}
+export async function extendBooking(id:string,opts:{extraHours?:number;extraDays?:number;uid:string}){
+  const ref=doc(db,"bookings",id);
+  const snap=await getDoc(ref);
+  if(!snap.exists()) throw Error("Booking not found.");
+  const d:any=snap.data();
+  if(d.status!=="Confirmed") throw Error("Only confirmed bookings can be extended.");
+  const extraHours=Math.max(0,Math.floor(opts.extraHours||0));
+  const extraDays=Math.max(0,Math.floor(opts.extraDays||0));
+  if(!extraHours&&!extraDays) throw Error("Choose an extension.");
+  const isDesk=d.space==="desk"||d.space==="cubicle";
+  const inv=d.inventoryIds?.length?d.inventoryIds:[d.inventoryId];
+  const dates=d.dates?.length?d.dates:[d.date];
+  const lockRefs:any[]=[];
+  const lockData:any[]=[];
+  let baseAdd=0;
+  if(isDesk){
+    for(let day=1;day<=extraDays;day++){
+      const newDay=addDays(d.endDate||d.date,day);
+      for(const inventoryId of inv){
+        const lockId=`${newDay}_${inventoryId}_day`;
+        lockRefs.push(doc(db,"bookingLocks",lockId));
+        lockData.push({bookingId:id,userId:d.userId,inventoryId,date:newDay,start:null,end:null,status:"Confirmed",expiresAt:null,updatedAt:serverTimestamp()});
+      }
+    }
+    baseAdd=extraDays>0?Math.round(Number(d.base||0)/Math.max(1,Number(d.days||dates.length)))*extraDays:0;
+  }else{
+    if(extraDays>0) throw Error("Timed rooms can be extended by hours only.");
+    const end=d.end||d.start||"09:00";
+    const day=d.endDate||d.date;
+    for(let i=0;i<extraHours;i++){
+      const slot=addHours(end,i);
+      if(slot>="19:00") throw Error("Extension cannot go past 7:00 PM.");
+      const lockId=`${day}_${d.space}_${slot}`;
+      lockRefs.push(doc(db,"bookingLocks",lockId));
+      lockData.push({bookingId:id,userId:d.userId,inventoryId:d.space,date:day,start:slot,end:addHours(slot,1),status:"Confirmed",expiresAt:null,updatedAt:serverTimestamp()});
+    }
+    baseAdd=Math.round((Number(d.base||0)/Math.max(1,Number(d.durationHours||1)))*extraHours);
+  }
+  await runTransaction(db,async tx=>{
+    const locks=await Promise.all(lockRefs.map(r=>tx.get(r)));
+    for(const lock of locks){
+      if(lock.exists()){
+        const x:any=lock.data();
+        const active=x.status==="Confirmed"||(x.status==="Pending"&&(x.expiresAt?.toMillis?.()||0)>Date.now());
+        if(active) throw Error("The extension slot is already booked.");
+      }
+    }
+    for(let i=0;i<lockRefs.length;i++) tx.set(lockRefs[i],lockData[i]);
+    const nextDates=isDesk?[...(d.dates||dates),...Array.from({length:extraDays},(_,i)=>addDays(d.endDate||d.date,i+1))]:dates;
+    let finalEndDate=d.endDate||d.date;
+    let finalEnd=d.end;
+    let finalDays=d.days;
+    let finalDuration=d.durationHours;
+    if(isDesk){
+      finalEndDate=addDays(d.endDate||d.date,extraDays);
+      finalDays=Number(d.days||dates.length)+extraDays;
+    }else{
+      finalEnd=addHours(d.end||d.start||"09:00",Number(d.durationHours||1)+extraHours);
+      finalDuration=Number(d.durationHours||0)+extraHours;
+    }
+    const updateData:any={dates:nextDates,endDate:finalEndDate,days:finalDays,durationHours:isDesk?d.durationHours:finalDuration,base:Number(d.base||0)+baseAdd,total:Number(d.total||0)+baseAdd,extensionTotal:Number(d.extensionTotal||0)+baseAdd,updatedAt:serverTimestamp(),lastExtendedBy:opts.uid};
+    if(!isDesk) updateData.end=finalEnd;
+    tx.update(ref,updateData);
+  });
+}
 export async function cleanupExpiredHolds(){const now=Date.now(),q=await getDocs(query(collection(db,"bookingLocks"),where("status","==","Pending"),limit(500))),expired=q.docs.filter(d=>{const t=d.data().expiresAt?.toMillis?.()||0;return t>0&&t<=now});await Promise.all(expired.map(d=>updateDoc(d.ref,{status:"Expired",expiresAt:null,updatedAt:serverTimestamp()})));const bq=await getDocs(query(collection(db,"bookings"),where("status","==","Pending"),limit(500))),expiredBookings=bq.docs.filter(d=>{const t=d.data().expiresAt?.toMillis?.()||0;return t>0&&t<=now});await Promise.all(expiredBookings.map(d=>updateDoc(d.ref,{status:"Expired",expiresAt:null,paymentStatus:"Pending",updatedAt:serverTimestamp()})));return expired.length+expiredBookings.length;}
 export async function createBooking(input:{date:string;endDate?:string;days?:number;dates?:string[];space:Space;inventoryId:string;inventoryIds?:string[];lockKeys?:string[];label:string;userId:string;userEmail:string;customerName?:string;customerEmail?:string;customerPhone?:string;createdByRole?:string;walkIn?:boolean;start?:string;end?:string;durationHours?:number;base:number;discount:number;total:number;offerId?:string|null;couponCode?:string;membershipId?:string;referralCode?:string;status?:"Pending"|"Confirmed";addons?:any[];amenities?:string[];notes?:string}){const dates=input.dates?.length?input.dates:[input.date],ids=input.inventoryIds?.length?input.inventoryIds:[input.inventoryId],timed=!!input.start,hoursPerDay=timed?Math.max(1,Math.round((input.durationHours||1)/Math.max(1,dates.length))):1,generatedLockKeys:string[]=[],lockInventories:string[]=[];if(timed){for(const day of dates){for(let i=0;i<hoursPerDay;i++){const [hh,mm]=(input.start||"09:00").split(":").map(Number),n=hh*60+mm+i*60,slot=`${String(Math.floor(n/60)%24).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`;generatedLockKeys.push(`${day}_${input.space}_${slot}`);lockInventories.push(ids[0]);}}}else{for(const day of dates)for(const id of ids){generatedLockKeys.push(`${day}_${id}_day`);lockInventories.push(id);}}const finalLockKeys=input.lockKeys?.length?input.lockKeys:generatedLockKeys,bookingRef=doc(collection(db,"bookings")),expiresAt=Timestamp.fromMillis(Date.now()+15*60*1000),finalStatus=input.status||"Pending";if(lockInventories.length!==finalLockKeys.length)throw Error("Booking configuration is invalid.");await runTransaction(db,async tx=>{const lockRefs=finalLockKeys.map(k=>doc(db,"bookingLocks",k.replace(/[^a-zA-Z0-9_-]/g,"-"))),locks=await Promise.all(lockRefs.map(r=>tx.get(r)));const conflicts:{inventoryId:string;date:string}[]=[];for(let i=0;i<locks.length;i++){const lock=locks[i];if(lock.exists()){const ld:any=lock.data(),active=ld.status==="Confirmed"||(ld.status==="Pending"&&(ld.expiresAt?.toMillis?.()||0)>Date.now());if(active)conflicts.push({inventoryId:lockInventories[i],date:(finalLockKeys[i].split("_")[0])||input.date});}}if(conflicts.length){const names=[...new Set(conflicts.map(c=>c.inventoryId.replace(/^desk-/,"")))];const err:any=new Error(`${names.join(", ")} ${names.length===1?"is":"are"} already booked for ${[...new Set(conflicts.map(c=>c.date))].join(", ")}. It has been removed from your selection — please review and try again.`);err.conflicts=conflicts;throw err;}const payload=clean({...input,dates,endDate:input.endDate||dates[dates.length-1],days:input.days||dates.length,inventoryIds:ids,lockIds:lockRefs.map(r=>r.id),status:finalStatus,expiresAt:finalStatus==="Confirmed"?null:expiresAt,paymentStatus:finalStatus==="Confirmed"?"Paid":"Pending",refundStatus:"Not Requested",createdAt:serverTimestamp()});tx.set(bookingRef,payload);for(let i=0;i<lockRefs.length;i++){const k=finalLockKeys[i],parts=k.split("_"),day=parts.shift()||input.date,rest=parts.join("_"),slot=timed?rest:null;tx.set(lockRefs[i],clean({bookingId:bookingRef.id,inventoryId:lockInventories[i],date:day,start:slot,end:timed?input.end||addHours(slot||"09:00",1):null,userId:input.userId,status:finalStatus,expiresAt:finalStatus==="Confirmed"?null:expiresAt,updatedAt:serverTimestamp()}));}});return{id:bookingRef.id,expiresAt};}
