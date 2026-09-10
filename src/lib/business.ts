@@ -5,7 +5,7 @@ export const DEFAULT_POLICY = {
   maxAdvanceDays: 60, businessStart: "09:00", businessEnd: "19:00",
   minimumAdvancePercent: 100, balanceDueDays: 0, rescheduleWindowDays: 30,
   cancellationHours: 24, cancellationRefundPercent: 100,
-  weekly: { 0: { closed: true } } as Record<string, any>, seasons: [] as any[], exceptions: [] as any[],
+  weekly: { 0: { closed: true } } as Record<string, any>, seasons: [] as any[], exceptions: [] as any[], calendar: {} as Record<string, any>,
 };
 export const money = (n: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(Number(n || 0));
 export const localTime = (now = new Date()) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
@@ -19,9 +19,10 @@ export function officeHours(date: string, raw: any = {}, holidays: any[] = []) {
   const weekly = policy.weekly?.[weekday(date)] || {};
   const exception = (policy.exceptions || []).find((e: any) => e.date === date);
   const holiday = holidays.find(h => h.active !== false && h.date === date);
-  const hours = { start: policy.businessStart, end: policy.businessEnd, closed: false, ...weekly, ...season, ...exception };
+  const calendar = policy.calendar?.[date];
+  const hours = { start: policy.businessStart, end: policy.businessEnd, closed: false, ...weekly, ...season, ...exception, ...(calendar || {}) };
   const closed = Boolean(holiday) || Boolean(hours.closed);
-  return { start: hours.start, end: hours.end, closed, reason: holiday?.reason || hours.reason || (weekday(date) === 0 ? "Sunday holiday" : "Closed") };
+  return { start: hours.start, end: hours.end, closed, reason: holiday?.reason || hours.reason || (weekday(date) === 0 && closed ? "Sunday holiday" : "Closed") };
 }
 export function consecutiveDates(start: string, count: number, policy: any = {}, holidays: any[] = []) {
   if (!PASS_ALLOWANCES[count]) throw Error("Choose a 10, 20 or 30 working-day pass.");
