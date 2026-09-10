@@ -21,8 +21,9 @@ const draft = {
   email: "gopp@gmail.com",
   phone: "9575757575",
   dob: "2000-05-22",
-  profession: "Marketing Team",
+  profession: "Marketing / Sales",
   gender: "Female",
+  otherProfession: "",
 };
 function fill() {
   for (const [label, key] of [
