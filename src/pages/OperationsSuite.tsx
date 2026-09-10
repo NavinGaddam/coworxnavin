@@ -1310,9 +1310,9 @@ export default function OperationsSuite({
         </section>
       )}
       {tab === "banners" && can("noticesManage") && (
-        <>
+        <div className="homepageAdminStack">
           <HomepageContentEditor onFlash={onFlash} />
-        <section className="opsPanel">
+          <section className="opsPanel">
           <div className="panelHead">
             <div>
               <span className="eyebrow">BANNERS</span>
@@ -1438,8 +1438,8 @@ export default function OperationsSuite({
             ))}
             {!banners.length && <p className="opsNote">No banners yet.</p>}
           </div>
-        </section>
-        </>
+          </section>
+        </div>
       )}
       {tab === "wednesday" && can("pricingManage") && (
         <section className="opsPanel">
