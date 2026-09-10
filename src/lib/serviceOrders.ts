@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { localToday } from "../pages/types";
 import { bookingOn, sessionHours, timeAt } from "./business";
@@ -41,9 +41,6 @@ export async function createServiceOrder(bookingId:string,item:"Tea"|"Coffee"|"P
     const pricing={...DEFAULT_SERVICE_PRICING,...(pricingSnap.exists()?pricingSnap.data():{})};
     let complimentary=false,unitPrice=0;
     if(item==="Tea"||item==="Coffee"){
-      const previous=await tx.get(query(collection(db,"serviceOrders"),where("bookingId","==",bookingId),where("category","==","Beverage")) as any).catch(()=>null as any);
-      // Firestore transactions cannot reliably use arbitrary query reads in every SDK/runtime;
-      // use a deterministic entitlement document as the atomic free-drink guard instead.
       const entitlementRef=doc(db,"serviceEntitlements",`${bookingId}_drink`),entitlement=await tx.get(entitlementRef);
       complimentary=!entitlement.exists();
       unitPrice=complimentary?0:Number(item==="Tea"?pricing.tea:pricing.coffee);
