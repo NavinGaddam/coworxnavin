@@ -1,85 +1,45 @@
 from pathlib import Path
 
-
-def replace_once(text: str, old: str, new: str, label: str) -> str:
-    if old not in text:
-        raise SystemExit(f"Missing patch target: {label}")
-    return text.replace(old, new, 1)
-
-# OperationsSuite: keep all existing operational modules, replace only enquiry tab.
-ops_path = Path("src/pages/OperationsSuite.tsx")
-ops = ops_path.read_text()
-if 'import EnquiryCRM from "../components/EnquiryCRM";' not in ops:
-    ops = replace_once(
-        ops,
-        'import DeskRates from "../components/DeskRates";\n',
-        'import DeskRates from "../components/DeskRates";\nimport EnquiryCRM from "../components/EnquiryCRM";\n',
-        "EnquiryCRM import",
-    )
-start = '      {tab === "enquiries" && can("enquiriesManage") && ('
-end = '      {tab === "resources" && can("resourcesManage") && ('
-if start in ops and end in ops:
-    a = ops.index(start)
-    b = ops.index(end, a)
-    ops = ops[:a] + '''      {tab === "enquiries" && can("enquiriesManage") && (\n        <EnquiryCRM actorUid={uid} onFlash={onFlash} />\n      )}\n''' + ops[b:]
+# Add editable homepage-card editor to existing Homepage Notices operations tab.
+ops_path=Path("src/pages/OperationsSuite.tsx")
+ops=ops_path.read_text()
+if 'HomepageContentEditor' not in ops:
+    ops=ops.replace('import EnquiryCRM from "../components/EnquiryCRM";\n','import EnquiryCRM from "../components/EnquiryCRM";\nimport { HomepageContentEditor } from "../components/HomepagePossibilities";\n',1)
+    start='      {tab === "banners" && can("noticesManage") && ('
+    end='      {tab === "comms" && can("communicationsManage") && ('
+    a=ops.find(start);b=ops.find(end,a)
+    if a<0 or b<0: raise SystemExit("Homepage banners block not found")
+    block=ops[a:b]
+    block=block.replace(start,start+'\n        <>\n          <HomepageContentEditor onFlash={onFlash} />',1)
+    tail='        </section>\n      )}\n'
+    pos=block.rfind(tail)
+    if pos<0: raise SystemExit("Homepage banners block closing not found")
+    block=block[:pos]+tail.replace('      )}','        </>\n      )}')+block[pos+len(tail):]
+    ops=ops[:a]+block+ops[b:]
 ops_path.write_text(ops)
 
-# Booking: no popup placeholder, full advance for every booking, configurable Sunday copy.
-booking_path = Path("src/pages/Booking.tsx")
-booking = booking_path.read_text()
-booking = replace_once(
-    booking,
-    '''    const waWindow = !p.staffBooking\n      ? window.open("about:blank", "_blank")\n      : null;\n    if (waWindow) waWindow.opener = null;\n''',
-    '',
-    "remove blank WhatsApp popup",
-)
-booking = replace_once(
-    booking,
-    '''        setWhatsAppUrl(url);\n        if (waWindow) waWindow.location.href = url;\n''',
-    '''        // Show a direct user-clicked WhatsApp link after the booking is saved.\n        // Opening a blank window before async Firestore work caused blank tabs on some browsers.\n        setWhatsAppUrl(url);\n''',
-    "WhatsApp handoff",
-)
-booking = booking.replace('      waWindow?.close();\n', '')
-booking = replace_once(
-    booking,
-    '  const minimumDue=selectedPlan?Math.ceil(total*Number(selectedPlan.minimumAdvancePercent||policy.minimumAdvancePercent||50))/100:total;\n',
-    '  const minimumDue=total;\n',
-    "full advance minimum",
-)
-booking = replace_once(
-    booking,
-    '  const paymentReady=!p.staffBooking||Boolean(p.canConfirm&&paymentVerified&&payingNow<=total&&(selectedPlan?payingNow>=minimumDue:payingNow===total)&&(!tender.upi||tender.reference.trim()));\n',
-    '  const paymentReady=!p.staffBooking||Boolean(p.canConfirm&&paymentVerified&&payingNow===total&&(!tender.upi||tender.reference.trim()));\n',
-    "full advance readiness",
-)
-booking = booking.replace(
-    'Sundays are holidays.',
-    'Sunday follows the configured weekly schedule.',
-)
-booking = booking.replace(
-    'Partial advance permitted; extra reschedules require admin approval.',
-    'Full advance payment is required; extra reschedules require admin approval.',
-)
-booking = booking.replace(
-    'Verify at least ₹${minimumDue.toLocaleString("en-IN")} received before creating this pass.',
-    'Verify the full ₹${total.toLocaleString("en-IN")} advance payment before creating this pass.',
-)
-booking = replace_once(
-    booking,
-    '  const amount=Math.round((Number(tender.cash||0)+Number(tender.upi||0))*100)/100;\n',
-    '  const amount=Math.round((Number(tender.cash||0)+Number(tender.upi||0)+Number(tender.other||0))*100)/100;\n',
-    "staff tender total",
-)
-booking = booking.replace(
-    '{passDays?"Minimum required now":"Full advance required"}',
-    '{"Full advance required"}',
-)
-booking = booking.replace(
-    '{passDays&&minimumDue<total&&<button type="button" className="ghost" onClick={()=>fill("upi",minimumDue)}>Minimum by UPI</button>}',
-    '',
-)
-booking = booking.replace(
-    'passDays&&amount<minimumDue?`₹${(minimumDue-amount).toLocaleString("en-IN")} more required`:!passDays&&amount!==total?',
-    'amount!==total?',
-)
-booking_path.write_text(booking)
+# Replace the homepage workspace cards with informational detail cards, keeping fallback photos.
+home_path=Path("src/pages/CustomerHome.tsx")
+home=home_path.read_text()
+if 'HomepagePossibilities' not in home:
+    home=home.replace('import Dialog from "../components/Dialog";\n','import Dialog from "../components/Dialog";\nimport { HomepagePossibilities } from "../components/HomepagePossibilities";\n',1)
+    start='      <section className="homeSpaces" id="spaces">'
+    end='      <section className="homeStory">'
+    a=home.find(start);b=home.find(end,a)
+    if a<0 or b<0: raise SystemExit("Homepage possibilities section not found")
+    replacement='''      <HomepagePossibilities fallbackImages={{desk:desksImage,meeting:meetingImage,conference:conferenceImage,podcast:studioImage}} />\n'''
+    home=home[:a]+replacement+home[b:]
+    user_marker='      {user ? ('
+    if user_marker not in home: raise SystemExit("Homepage user marker not found")
+    closure='''      {hours.closed && (\n        <div className="homeNotice closureNotice">\n          <Clock3 size={17} />\n          <div><b>Coworx Central is closed today</b><span>{hours.reason || "Office closed"}. Desks, rooms and service orders are unavailable today.</span></div>\n        </div>\n      )}\n'''
+    home=home.replace(user_marker,closure+user_marker,1)
+home_path.write_text(home)
+
+# Rules: homepage content belongs to notice managers; check-in is impossible on a closed date.
+rules_path=Path("firestore.rules")
+rules=rules_path.read_text()
+if "id == 'homeContent'" not in rules:
+    rules=rules.replace("        id == 'servicePricing' && can('paymentsManage') ||\n","        id == 'servicePricing' && can('paymentsManage') ||\n        id == 'homeContent' && can('noticesManage') ||\n",1)
+    rules=rules.replace("'deskPricing','deskFeatures','servicePricing','upi'","'deskPricing','deskFeatures','servicePricing','homeContent','upi'",1)
+rules=rules.replace("can('checkIn') && bookingToday(b) && entryPaid(b)","can('checkIn') && bookingToday(b) && openDay(today()) && entryPaid(b)",1)
+rules_path.write_text(rules)
