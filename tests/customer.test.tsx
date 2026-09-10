@@ -19,7 +19,7 @@ afterEach(() => {
 const draft = {
   name: "GOPP",
   email: "gopp@gmail.com",
-  phone: "4575757575",
+  phone: "9575757575",
   dob: "2000-05-22",
   profession: "Marketing Team",
   gender: "Female",
@@ -110,7 +110,7 @@ describe("walk-in customer regression", () => {
   });
   it("does not treat a text search as an empty phone-number match", () => {
     expect(customerMatches(draft, "Rahul")).toBe(false);
-    expect(customerMatches(draft, "4575")).toBe(true);
+    expect(customerMatches(draft, "9575")).toBe(true);
   });
   it("normalizes copied email addresses and rejects impossible birth dates", () => {
     expect(
