@@ -202,7 +202,7 @@ describe("database capability enforcement and booking lifecycle", () => {
     const data = {
       name: "GOPP",
       email: " GOPP@gmail.com ",
-      phone: "4575757575",
+      phone: "6575757575",
       dob: "2000-05-22",
       profession: "Marketing Team",
       gender: "Female",
@@ -384,7 +384,7 @@ describe("prepaid operations and consecutive passes",()=>{
   it("requires full advance for regular bookings and stores split receipts atomically",async()=>{
     auth("reception");const created=await createBooking(booking({status:"Confirmed"}));
     expect((await getDoc(doc(session.db,"bookings",created.id))).data()?.status).toBe("Pending");
-    await expect(collectPayment(created.id,{cash:100,upi:0,other:0,reference:""})).rejects.toThrow("full advance");
+    await expect(collectPayment(created.id,{cash:100,upi:0,other:0,reference:""})).rejects.toThrow("Full advance");
     await collectPayment(created.id,{cash:100,upi:150,other:0,reference:"UPI-123"});
     const b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;
     const receipt=(await getDoc(doc(session.db,"payments",b.lastPaymentId))).data()!;
@@ -392,20 +392,18 @@ describe("prepaid operations and consecutive passes",()=>{
     await assertFails(updateDoc(doc(session.db,"payments",b.lastPaymentId),{amount:1}));
     auth("customer");await assertFails(updateDoc(doc(session.db,"bookings",created.id),{rescheduleAllowance:100}));
   });
-  it("records allowed pass instalments and blocks a disabled collection capability",async()=>{
+  it("requires full advance for passes and blocks a disabled collection capability",async()=>{
     const created=await passBooking();auth("reception");
-    await expect(collectPayment(created.id,{cash:499,upi:0,other:0,reference:""})).rejects.toThrow("at least");
-    await collectPayment(created.id,{cash:500,upi:0,other:0,reference:""});
-    let b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;
-    expect(b.passDays).toBe(10);expect(b.dates).toHaveLength(10);expect(b.rescheduleAllowance).toBe(1);expect(b.paymentStatus).toBe("Partially Paid");
+    await expect(collectPayment(created.id,{cash:999,upi:0,other:0,reference:""})).rejects.toThrow("Full advance");
     await seed("settings/permissions",{Receptionist:{paymentsCollect:false}});
-    await assertFails(collectPayment(created.id,{cash:500,upi:0,other:0,reference:""}));
-    auth("manager");await collectPayment(created.id,{cash:0,upi:500,other:0,reference:"FINAL-1"});
-    b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;expect(b.paymentStatus).toBe("Paid");
-    expect((await getDocs(collection(session.db,"payments"))).size).toBe(2);
+    await assertFails(collectPayment(created.id,{cash:1000,upi:0,other:0,reference:""}));
+    auth("manager");await collectPayment(created.id,{cash:500,upi:500,other:0,reference:"FINAL-1"});
+    const b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;
+    expect(b.passDays).toBe(10);expect(b.dates).toHaveLength(10);expect(b.rescheduleAllowance).toBe(1);expect(b.paymentStatus).toBe("Paid");
+    expect((await getDocs(collection(session.db,"payments"))).size).toBe(1);
   });
   it("reschedules once, moves its locks, then requires an admin-only exception",async()=>{
-    const created=await passBooking();auth("manager");await collectPayment(created.id,{cash:500,upi:0,other:0,reference:""});
+    const created=await passBooking();auth("manager");await collectPayment(created.id,{cash:1000,upi:0,other:0,reference:""});
     let b=(await getDoc(doc(session.db,"bookings",created.id))).data()!;
     let to=addDays(b.endDate,1);while(officeHours(to).closed)to=addDays(to,1);
     const from=b.dates[0];auth("customer");await reschedulePass(created.id,from,to,"Unable to attend");
