@@ -1,3 +1,4 @@
+import { sessionHours } from "../lib/business";
 import { useEffect, useState } from "react";
 import { CalendarDays, Download, MapPin, ShieldCheck } from "lucide-react";
 import QRCode from "qrcode";
@@ -74,7 +75,7 @@ export default function BookingPass({ booking, onClose }: any) {
               : ""}
           </span>
           <span>
-            {data.start ? `${data.start}–${data.end}` : "9:00 AM–7:00 PM"}
+            {`${sessionHours(data,data.date).start}–${sessionHours(data,data.date).end}`}
           </span>
           <span>
             <MapPin size={16} /> Coworx Central · Solapur

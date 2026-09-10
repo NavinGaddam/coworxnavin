@@ -8,6 +8,8 @@ import {
   validateCustomer,
 } from "../lib/customer";
 import { localToday } from "../pages/types";
+import { DatePicker } from "../pages/DatePicker";
+import UserAvatar from "./UserAvatar";
 
 export default function CustomerPicker({
   users = [],
@@ -95,7 +97,7 @@ export default function CustomerPicker({
       </div>
       {selected ? (
         <div className="selectedCustomer">
-          <div className="avatar">{(selected.name || "?")[0]}</div>
+          <UserAvatar profile={selected} size={52} />
           <div>
             <strong>{selected.name}</strong>
             <span>{selected.email}</span>
@@ -147,7 +149,7 @@ export default function CustomerPicker({
                     key={u.uid || u.id}
                     onClick={() => choose(u)}
                   >
-                    <span className="avatar small">{(u.name || "?")[0]}</span>
+                    <UserAvatar profile={u} size={38} />
                     <span>
                       <b>{u.name || u.email}</b>
                       <small>
@@ -227,19 +229,17 @@ export default function CustomerPicker({
                   required
                 />
               </label>
-              <label>
-                Date of birth *
-                <input
-                  name="dob"
-                  type="date"
+              <div className="customerDateField">
+                <DatePicker
+                  label="Date of birth *"
                   value={draft.dob}
                   max={localToday()}
                   min="1900-01-01"
-                  onChange={(e) => field("dob", e.target.value)}
-                  required
+                  placeholder="Choose date of birth"
+                  onChange={(value) => field("dob", value)}
                 />
                 <small>Age is calculated from the date of birth.</small>
-              </label>
+              </div>
               <label>
                 Profession *
                 <input

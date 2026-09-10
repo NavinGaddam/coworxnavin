@@ -1,3 +1,5 @@
+import HoursEditor from "../components/HoursEditor";
+import { DEFAULT_POLICY, validatePolicy } from "../lib/business";
 import { useEffect, useState } from "react";
 import {
   Building2,
@@ -38,6 +40,7 @@ export default function Administration({
   admins = [],
   logs = [],
   matrix,
+  bookings = [],
   onFlash,
 }: any) {
   const pages = [
@@ -60,11 +63,7 @@ export default function Administration({
     [assignments, setAssignments] = useState<any[]>([]),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const [policy, setPolicy] = useState<any>({
-      maxAdvanceDays: 60,
-      businessStart: "09:00",
-      businessEnd: "19:00",
-    }),
+  const [policy, setPolicy] = useState<any>(DEFAULT_POLICY),
     [shifts, setShifts] = useState<any>({
       morning: "09:00–15:00",
       evening: "15:00–19:00",
@@ -224,7 +223,7 @@ export default function Administration({
               <div className="sectionHeading">
                 <div>
                   <h3>Payment details</h3>
-                  <p>UPI details shared with customers by your team.</p>
+                  <p>Customers complete requests on WhatsApp; staff verifies Cash/UPI before confirmation. Payment records are provider-ready for a future Razorpay connection.</p>
                 </div>
                 <WalletCards />
               </div>
@@ -232,6 +231,7 @@ export default function Administration({
                 ["upiId", "UPI ID"],
                 ["merchantName", "Merchant name"],
               ])}
+              <p className="noticeBox"><b>Current checkout: WhatsApp + manual verification</b><br/>Do not mark a booking paid until the UPI transaction appears in the merchant account or cash is physically received.</p>
               <div className="formActions">
                 <button
                   className="primary"
@@ -278,41 +278,22 @@ export default function Administration({
                 <div className="sectionHeading">
                   <div>
                     <h3>Booking policy</h3>
-                    <p>Workspace operating hours are 9:00 AM–7:00 PM.</p>
+                    <p>Office schedules, advance payments and customer change policies.</p>
                   </div>
                   <Clock3 />
                 </div>
-                <label>
-                  Maximum advance booking days
-                  <input
-                    type="number"
-                    min="1"
-                    max="60"
-                    value={policy.maxAdvanceDays}
-                    onChange={(e) =>
-                      setPolicy({
-                        ...policy,
-                        maxAdvanceDays: Number(e.target.value),
-                      })
-                    }
-                  />
-                </label>
+                <HoursEditor value={policy} onChange={setPolicy} bookings={bookings}/>
+                <h3>Booking & payment policy</h3>
+                {fields(policy,setPolicy,[["maxAdvanceDays","Maximum advance booking days","number"],["minimumAdvancePercent","Default minimum pass advance (%)","number"],["balanceDueDays","Pass balance due after start (calendar days)","number"],["rescheduleWindowDays","Replacement date window after original pass end (days)","number"],["cancellationHours","Cancellation cutoff before first session (hours)","number"],["cancellationRefundPercent","Refund percentage before cutoff","number"]])}
+                <p>Regular bookings always require full advance. Passes include 1 / 2 / 3 reschedules for 10 / 20 / 30 working days. Only admin can grant additional allowance.</p>
                 <div className="formActions">
                   <button
                     className="primary"
                     disabled={busy}
                     onClick={() =>
                       save(async () => {
-                        if (
-                          policy.maxAdvanceDays < 1 ||
-                          policy.maxAdvanceDays > 60
-                        )
-                          throw Error("Choose 1–60 advance days.");
-                        await savePolicy({
-                          ...policy,
-                          businessStart: "09:00",
-                          businessEnd: "19:00",
-                        });
+                        validatePolicy(policy);
+                        await savePolicy(policy);
                       }, "Booking policy saved.")
                     }
                   >

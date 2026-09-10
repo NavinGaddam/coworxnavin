@@ -3,7 +3,12 @@ import type { Role } from "../pages/types";
 export const PERMISSIONS = [
   ["bookingsView", "Bookings", "View all bookings"],
   ["bookingsCreate", "Bookings", "Book for a customer"],
-  ["bookingsConfirm", "Bookings", "Confirm and collect payment"],
+  ["paymentsCollect", "Finance", "Collect payments and confirm paid bookings"],
+  ["collectionsView", "Finance", "View collections and close shifts"],
+  ["paymentsCorrect", "Finance", "Reverse incorrect payment entries"],
+  ["passesView", "Bookings", "View consecutive passes"],
+  ["passesReschedule", "Bookings", "Reschedule within the pass allowance"],
+  ["passExceptions", "Administration", "Grant extra pass reschedules (admin only)"],
   ["bookingsCancel", "Bookings", "Cancel and release bookings"],
   ["bookingsDiscount", "Bookings", "Apply staff discounts"],
   ["bookingsExtend", "Bookings", "Extend confirmed bookings"],
@@ -38,9 +43,12 @@ const set = (allowed: readonly string[]): PermissionSet =>
 export const DEFAULT_PERMISSIONS: PermissionMatrix = {
   Admin: set(PERMISSIONS.map(([key]) => key)),
   Manager: set([
+    "paymentsCollect",
+    "collectionsView",
+    "passesView",
+    "passesReschedule",
     "bookingsView",
     "bookingsCreate",
-    "bookingsConfirm",
     "bookingsCancel",
     "bookingsDiscount",
     "bookingsExtend",
@@ -56,6 +64,10 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     "communicationsManage",
   ]),
   Receptionist: set([
+    "paymentsCollect",
+    "collectionsView",
+    "passesView",
+    "passesReschedule",
     "bookingsView",
     "bookingsCreate",
     "checkIn",
@@ -91,15 +103,18 @@ export function canAccess(
   matrix: PermissionMatrix,
   owner = false,
 ) {
-  return owner || (role !== "User" && Boolean(matrix[role]?.[key]));
+  return (key !== "passExceptions" || role === "Admin") && (owner || (role !== "User" && Boolean(matrix[role]?.[key])));
 }
 export const STAFF_ROLES: Role[] = ["Admin", "Manager", "Receptionist"];
 
 const dependencies: Partial<Record<Permission, Permission[]>> = {
   bookingsCreate: ["bookingsView", "customersView"],
-  bookingsConfirm: ["bookingsView"],
+  paymentsCollect: ["bookingsView", "collectionsView"],
+  paymentsCorrect: ["bookingsView", "collectionsView"],
+  passesReschedule: ["bookingsView", "passesView"],
+  passesView: ["bookingsView"],
   bookingsCancel: ["bookingsView"],
-  bookingsDiscount: ["bookingsConfirm"],
+  bookingsDiscount: ["paymentsCollect"],
   bookingsExtend: ["bookingsView"],
   checkIn: ["bookingsView"],
   checkOut: ["bookingsView"],

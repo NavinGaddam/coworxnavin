@@ -44,6 +44,10 @@ export function validateCustomer(draft: CustomerDraft, today: string) {
   if (!value.profession) throw Error("Enter the customer's profession.");
   return value;
 }
+export function ageFromDob(dob:string,today:string){
+  const birth=new Date(dob+"T00:00:00Z"), now=new Date(today+"T00:00:00Z");
+  return now.getUTCFullYear()-birth.getUTCFullYear()-(now.getUTCMonth()<birth.getUTCMonth()||now.getUTCMonth()===birth.getUTCMonth()&&now.getUTCDate()<birth.getUTCDate()?1:0);
+}
 export function customerMatches(customer: any, term: string) {
   const q = term.trim().toLowerCase(),
     digits = q.replace(/\D/g, "");

@@ -1,0 +1,135 @@
+/* Comfortable controls and a persistent staff workspace on tablets and laptops. */
+.platformApp button,.platformApp a.primary,.platformApp a.ghost {font-size:16px;min-height:44px;line-height:1.35;font-weight:650}
+.platformApp .primary {font-size:17px;min-height:48px;padding:12px 20px}
+.platformApp .ghost,.platformApp .primary.small,.platformApp .ghost.small {font-size:16px;min-height:44px;padding:10px 16px}
+.platformApp input:not([type=checkbox]),.platformApp select,.platformApp textarea {font-size:16px!important;min-height:48px;line-height:1.5}
+.platformApp label {font-size:15px!important;line-height:1.5}
+.platformApp .workspacePage p,.platformApp .bookingPage p,.platformApp .platformDialog p {font-size:16px;line-height:1.6}
+.platformApp .workspacePage small,.platformApp .bookingPage small,.platformApp .platformDialog small {font-size:13px;line-height:1.5}
+.platformApp .eyebrow,.platformApp .sidebarGroup,.platformApp .sidebarEyebrow {font-size:12px}
+.platformApp .platformDialog {max-width:780px}
+.platformApp .staffHeader {justify-content:space-between;height:76px}
+.platformApp .accountAvatar{width:48px;height:48px;padding:2px;border:0;background:transparent;overflow:visible}
+.staffHeader .commandTrigger {min-width:240px;gap:12px;justify-content:space-between}
+.staffCommandBar {position:sticky;top:76px;z-index:35;background:var(--card);border-bottom:1px solid var(--line);padding:12px max(20px,calc((100vw - 1580px)/2));display:flex;align-items:center;justify-content:space-between;gap:16px;box-shadow:0 5px 12px #00000005}
+.primaryStaffNav {display:flex;align-items:center;gap:5px;flex:1;min-width:0}
+.primaryStaffNav button {display:flex;align-items:center;justify-content:center;gap:9px;padding:12px 16px;border:0;border-radius:10px;background:transparent;color:var(--muted);white-space:nowrap}
+.primaryStaffNav button.active {color:var(--green);background:color-mix(in srgb,var(--green) 11%,transparent);box-shadow:inset 0 -3px 0 var(--green)}
+.staffQuickActions {display:flex;gap:10px;flex-shrink:0}
+.platformApp .workspaceSidebar {top:150px;height:calc(100vh - 150px);padding-top:24px}
+.platformApp .workspaceSidebar button {font-size:15px;padding:12px 10px}
+.platformApp .staffLayout {grid-template-columns:225px minmax(0,1fr);max-width:1660px}
+.platformApp .workspacePage {max-width:1350px;padding:32px;min-width:0}
+.platformApp .pageHeading h1 {font-size:34px}
+.platformApp .siteFooter {margin-top:36px}
+.platformApp .reservationCard h3 {font-size:23px}
+.platformApp .reservationFacts,.platformApp .guestRow {font-size:16px}
+.platformApp .reservationActions {gap:10px;flex-wrap:wrap}
+.platformApp .guestRow {padding:18px 8px;gap:16px}
+.platformApp .guestRow small {display:block;margin-top:5px}
+.platformApp .statePill {font-size:13px;white-space:normal}
+.platformApp .summary {top:158px}
+.platformApp .summary h3 {font-size:26px}
+.platformApp .money {font-size:16px!important}
+.platformApp .bookCta {font-size:18px;min-height:54px;white-space:normal}
+.platformApp .checkLabel {display:flex;align-items:center;gap:10px;margin:12px 0}
+.platformApp .checkLabel input {width:22px!important;height:22px!important;min-height:22px;flex:0 0 22px;accent-color:var(--green)}
+.noticeBox {padding:16px;border:1px solid color-mix(in srgb,var(--green) 25%,var(--line));background:color-mix(in srgb,var(--green) 5%,var(--card));border-radius:12px;margin:16px 0;line-height:1.6}
+.paymentAmount {display:flex;flex-direction:column;gap:6px;text-align:center;padding:26px;background:var(--soft);border-radius:16px;margin:18px 0}
+.paymentAmount strong {font-size:40px;letter-spacing:-1px}
+.paymentFields {margin:18px 0}
+.passChooser {padding-bottom:18px}
+.passEndDate {display:block;font-size:24px;margin-top:8px}
+.passActions {border-top:1px solid var(--line);margin-top:18px;padding-top:8px}
+.dateChips {display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.dateChips span {display:inline-flex;gap:8px;padding:8px 10px;background:var(--soft);border:1px solid var(--line);border-radius:7px;font-size:14px}
+.platformApp summary {cursor:pointer;font-size:16px;padding:14px 0;font-weight:650}
+.platformApp .scheduleCard {border:1px solid var(--line);border-radius:12px;padding:18px;margin:14px 0}
+.platformApp .scheduleRow {display:grid;grid-template-columns:110px 1fr 1fr auto auto;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.collectionMetrics {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px}
+.collectionMetrics .surface {display:flex;flex-direction:column;gap:10px;margin:0}
+.collectionMetrics strong {font-size:26px;font-variant-numeric:tabular-nums}
+.platformApp .tableScroll {overflow:auto;max-width:100%}
+.platformApp .dataTable {width:100%;border-collapse:collapse;font-size:15px}
+.dataTable th {text-align:left;color:var(--muted);font-size:13px}
+.dataTable td,.dataTable th {padding:16px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.dataTable small {display:block;overflow-wrap:anywhere}
+.dataTable td:last-child {min-width:150px}
+.handoverRow,.historyList>div {display:flex;flex-direction:column;gap:6px;padding:16px 0;border-bottom:1px solid var(--line)}
+.historyReceipt {display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0}
+.customerWorkspace {display:grid;grid-template-columns:minmax(240px,.65fr) minmax(0,1.65fr);gap:22px;align-items:start}
+.customerWorkspace>section {min-width:0}
+.customerList {max-height:75vh;overflow:auto}
+.customerListRow {display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;padding:14px;background:transparent;border:0;border-bottom:1px solid var(--line);color:var(--text);text-align:left}
+.customerListRow>span:nth-child(2){display:grid;gap:3px;min-width:0}.customerListRow small{overflow-wrap:anywhere;color:var(--muted)}
+.customerListRow.active {background:var(--soft);box-shadow:inset 3px 0 var(--green)}
+.customerDetailHead{justify-content:flex-start}.customerDetailHead>div{flex:1}.customerPhotoActions{display:flex;align-items:center;gap:12px;margin:-4px 0 20px 82px;flex-wrap:wrap}
+.preferenceRow {display:flex;flex-wrap:wrap;gap:12px}
+.customerWorkspace h3 {margin-top:28px}
+.platformApp .segmented {flex-wrap:wrap;height:auto}
+.bookingDateRange{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.bookingDateRange>span{color:var(--muted);font-size:14px}.bookingCreated{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;margin-top:7px}.bookingCreated svg{flex:none}
+.bookingDateRange>.dpWrap:last-child .dpPopover{left:auto;right:0}
+.platformApp .fieldGrid {gap:18px}
+.platformApp .formActions {gap:12px;flex-wrap:wrap}
+@media(max-width:1300px){
+ .staffCommandBar {flex-wrap:wrap;gap:8px;padding:10px 20px}
+ .primaryStaffNav {flex:1 1 100%;display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:7px}
+ .primaryStaffNav button {min-height:54px;font-size:16px;padding:12px 10px}
+ .staffQuickActions {margin-left:auto}
+ .platformApp .workspaceSidebar {top:205px;height:calc(100vh - 205px)}
+ .platformApp .staffLayout {grid-template-columns:190px minmax(0,1fr)}
+ .platformApp .workspacePage {padding:24px}
+ .platformApp .summary {top:212px}
+ .collectionMetrics {grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:1050px){
+ .platformApp .staffLayout {grid-template-columns:1fr}
+ .platformApp .workspaceSidebar {display:none}
+ .platformApp .staffHeader .mobileOnly {display:flex}
+ .customerWorkspace {grid-template-columns:250px minmax(0,1fr)}
+ .platformApp .bookingGrid {grid-template-columns:1fr}
+ .platformApp .summary {position:static}
+ .platformApp .summary .bookCta {position:sticky;bottom:12px;z-index:5;box-shadow:0 4px 20px #0002}
+}
+@media(max-width:700px){
+ .platformApp .staffHeader {height:70px}
+ .staffCommandBar {top:70px;padding:8px 12px;gap:8px}
+ .primaryStaffNav {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+ .platformApp .primaryStaffNav button {font-size:15px;min-height:46px;gap:6px;padding:8px 5px;white-space:normal}
+ .primaryStaffNav button svg {width:17px;flex-shrink:0}
+ .staffQuickActions {width:100%;display:grid;grid-template-columns:1fr 1fr}
+ .platformApp .staffQuickActions button {padding:9px 10px;font-size:16px;min-height:46px}
+ .staffHeader .commandTrigger {min-width:44px}
+ .staffHeader .commandTrigger span {display:none}
+ .platformApp .workspacePage {padding:24px 16px}
+ .platformApp .pageHeading h1 {font-size:30px}
+ .platformApp .pageHeading {gap:16px;align-items:flex-start;flex-direction:column}
+ .platformApp .surface {padding:20px}
+ .customerWorkspace {grid-template-columns:1fr}
+ .customerList {max-height:250px}
+ .collectionMetrics {gap:10px}
+ .collectionMetrics strong {font-size:22px}
+ .platformApp .scheduleRow {grid-template-columns:1fr 1fr}
+ .platformApp .scheduleRow>b {grid-column:1/-1}
+ .platformApp .guestRow {flex-wrap:wrap}
+ .platformApp .guestRow>span:nth-child(2) {flex:1;min-width:140px}
+ .platformApp .reservationCard {padding:20px}
+ .platformApp .platformDialog {padding:22px 18px}
+ .platformApp .primary,.platformApp .primary.small {font-size:17px!important}
+ .platformApp .ghost,.platformApp .ghost.small {font-size:16px!important}
+ .platformApp .bookingPanel .tabs button {font-size:16px!important;min-height:48px}
+ .platformApp .sectionHeading {flex-wrap:wrap;gap:14px}
+ .bookingDateRange{display:grid;grid-template-columns:1fr auto 1fr;width:100%}.bookingDateRange .dpWrap,.bookingDateRange .dpTrigger{width:100%}.bookingDateRange .dpTrigger{padding:0 9px}
+ .platformApp .heroActions .primary {font-size:17px}
+}
+
+.platformApp .platformDialog.withFooter[open] {display:flex;flex-direction:column;overflow:hidden}
+.platformDialog.withFooter .dialogHeading,.platformDialog.withFooter .dialogFooter {flex-shrink:0}
+.platformDialog.withFooter .dialogBody {overflow:auto;min-height:0;padding-right:4px}
+.platformDialog.withFooter .dialogFooter {border-top:1px solid var(--line);padding-top:14px;margin-top:12px;background:var(--card)}
+.platformDialog.withFooter .dialogFooter .formActions {margin:0;padding:0;border:0}
+.platformApp .attentionList button b,.platformApp .todayRow span,.platformApp .occupancyNumbers span {font-size:15px}
+.platformApp .attentionList button span {font-size:14px}
+.staffLayout .staffOverview .pageHeading>button,.staffLayout .bookingsListPage .pageHeading>button,.staffLayout .receptionPage .pageHeading>.buttonRow {display:none}
+.memberReminders {display:grid;gap:10px;margin:20px 0}
+.memberReminders button {text-align:left;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0}

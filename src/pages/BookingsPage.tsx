@@ -1,6 +1,8 @@
+import { watchPayments, downloadReceipt } from "../lib/finance";
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
+  Clock3,
   CheckCircle2,
   Download,
   MessageCircle,
@@ -11,12 +13,20 @@ import {
   Wifi,
 } from "lucide-react";
 import { cancelBooking, confirmBooking, extendBooking } from "../lib/firestore";
+import PaymentDialog from "../components/PaymentDialog";
+import PassActions from "../components/PassActions";
+import { balance, bookingOn, cancellationQuote, money, paymentAccessError, sessionHours } from "../lib/business";
 import BookingPass from "../components/BookingPass";
 import Dialog from "../components/Dialog";
 import { localToday } from "./types";
+import { DatePicker } from "./DatePicker";
+
+const createdMillis=(b:any)=>b.createdAt?.toMillis?.()||b.createdAt?.toDate?.()?.getTime?.()||0;
+const bookedAt=(b:any)=>{const date=b.createdAt?.toDate?.();return date?date.toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"numeric",month:"short",year:"numeric",hour:"numeric",minute:"2-digit"}):"Time unavailable";};
 export default function BookingsPage({
   bookings = [],
   staff = false,
+  passesOnly = false,
   can = () => false,
   user,
   company,
@@ -25,15 +35,18 @@ export default function BookingsPage({
   onFlash,
   book,
 }: any) {
-  const [filter, setFilter] = useState(staff ? "all" : "upcoming"),
+  const [filter, setFilter] = useState(staff ? "today" : "upcoming"),
     [search, setSearch] = useState(""),
-    [date, setDate] = useState("");
+    [fromDate, setFromDate] = useState(""),
+    [toDate, setToDate] = useState("");
   const [pass, setPass] = useState<any>(null),
     [payment, setPayment] = useState<any>(null),
     [cancelling, setCancelling] = useState<any>(null),
     [wifiOpen, setWifiOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [receipts,setReceipts]=useState<any[]>([]);
+  useEffect(()=>{if(staff&&!can("collectionsView"))return;return watchPayments(setReceipts,e=>onFlash(e.message),staff?undefined:{uid:user.uid,email:user.email});},[staff,user.uid]);
   const [tick, setTick] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setTick(Date.now()), 30000);
@@ -49,6 +62,7 @@ export default function BookingsPage({
         .filter((b: any) => {
           const state = status(b);
           return (
+            (!passesOnly || !!b.passDays) &&
             (!search ||
               [
                 b.customerName,
@@ -59,12 +73,14 @@ export default function BookingsPage({
                 .join(" ")
                 .toLowerCase()
                 .includes(search.toLowerCase())) &&
-            (!date || (b.date <= date && (b.endDate || b.date) >= date)) &&
+            (!fromDate || (b.endDate||b.date)>=fromDate) &&
+            (!toDate || b.date<=toDate) &&
             (filter === "all" ||
+              (filter === "today" && bookingOn(b,localToday()) && ["Pending","Confirmed"].includes(state)) ||
               (filter === "pending" && state === "Pending") ||
               (filter === "upcoming" &&
                 ["Pending", "Confirmed"].includes(state) &&
-                (b.endDate || b.date) >= localToday()) ||
+                (staff ? b.date>localToday() : (b.endDate || b.date) >= localToday())) ||
               (filter === "past" &&
                 state === "Confirmed" &&
                 (b.endDate || b.date) < localToday()) ||
@@ -72,10 +88,8 @@ export default function BookingsPage({
                 ["Cancelled", "Expired"].includes(state)))
           );
         })
-        .sort((a: any, b: any) =>
-          (b.date + (b.start || "")).localeCompare(a.date + (a.start || "")),
-        ),
-    [bookings, search, filter, date, tick],
+        .sort((a: any, b: any) => createdMillis(b)-createdMillis(a) || (b.date + (b.start || "")).localeCompare(a.date + (a.start || ""))),
+    [bookings, search, filter, fromDate, toDate, tick, passesOnly, staff],
   );
   const run = async (fn: () => Promise<any>, success: string) => {
     setBusy(true);
@@ -93,13 +107,13 @@ export default function BookingsPage({
     }
   };
   return (
-    <section className="workspacePage">
+    <section className="workspacePage bookingsListPage">
       <div className="pageHeading">
         <div>
           <span className="eyebrow">
             {staff ? "OPERATIONS" : "YOUR COWORX"}
           </span>
-          <h1>{staff ? "Bookings" : "My bookings"}</h1>
+          <h1>{passesOnly ? "Consecutive passes" : staff ? "Bookings" : "My bookings"}</h1>
           <p>
             {staff
               ? "Manage reservations, payments and customer requests."
@@ -115,7 +129,7 @@ export default function BookingsPage({
       <div className="listToolbar">
         <div className="segmented">
           {(staff
-            ? ["all", "pending", "upcoming", "past", "cancelled"]
+            ? ["today", "upcoming", "past", "pending", "all", "cancelled"]
             : ["upcoming", "past", "cancelled"]
           ).map((id) => (
             <button
@@ -138,15 +152,14 @@ export default function BookingsPage({
             placeholder="Customer, desk or space"
           />
         </label>
-        <input
-          type="date"
-          aria-label="Filter booking date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
-        {date && (
-          <button className="textButton" onClick={() => setDate("")}>
-            Clear date
+        <div className="bookingDateRange" aria-label="Booking date range">
+          <DatePicker value={fromDate} onChange={value=>{setFromDate(value);if(toDate&&toDate<value)setToDate(value);}} placeholder="From date"/>
+          <span>to</span>
+          <DatePicker value={toDate} onChange={setToDate} min={fromDate||undefined} placeholder="To date"/>
+        </div>
+        {(fromDate||toDate) && (
+          <button className="textButton" onClick={() => {setFromDate("");setToDate("");}}>
+            Clear range
           </button>
         )}
       </div>
@@ -173,6 +186,7 @@ export default function BookingsPage({
                       ? b.customerName || b.customerEmail
                       : "Coworx Central · Solapur"}
                   </p>
+                  <span className="bookingCreated"><Clock3 size={14}/>Booked {bookedAt(b)} · {b.walkIn?"Front desk":b.checkoutChannel==="whatsapp"?"WhatsApp request":"Online"}</span>
                 </div>
                 <span
                   className={`statePill ${status(b) === "Confirmed" ? "good" : status(b) === "Pending" ? "warn" : ""}`}
@@ -187,7 +201,7 @@ export default function BookingsPage({
                   {b.endDate && b.endDate !== b.date ? ` → ${b.endDate}` : ""}
                 </span>
                 <span>
-                  {b.start || "09:00"}–{b.end || "19:00"}
+                  {sessionHours(b,b.date).start}–{sessionHours(b,b.date).end}
                 </span>
                 <strong>₹{Number(b.total || 0).toLocaleString("en-IN")}</strong>
                 <span>
@@ -207,11 +221,16 @@ export default function BookingsPage({
                   more minutes while payment is completed.
                 </p>
               )}
+              {receipts.some(r=>r.bookingId===b.id)&&<details><summary>Payment receipts</summary>{receipts.filter(r=>r.bookingId===b.id).map(r=><div className="historyReceipt" key={r.id}><span>{r.date} · {r.kind} · {money(r.amount)}</span><button className="ghost" onClick={()=>downloadReceipt(r,company).catch(e=>onFlash(e.message))}>Download receipt</button></div>)}</details>}
+              {b.passDays>0&&<PassActions booking={b} staff={staff} can={can} onFlash={onFlash}/>}
+              {balance(b)>0&&b.status==="Confirmed"&&<p className="noticeBox">Balance: {money(balance(b))}{b.balanceDueDate?` · Due ${b.balanceDueDate}`:" · Collect full payment before entry"}</p>}
               <div className="reservationActions">
                 {status(b) === "Confirmed" && (
                   <>
                     <button
                       className="primary small"
+                      disabled={!!paymentAccessError(b)}
+                      title={paymentAccessError(b)}
                       onClick={() => setPass(b)}
                     >
                       <QrCode size={16} /> Booking pass
@@ -239,7 +258,7 @@ export default function BookingsPage({
                         <Wifi size={16} /> Wi-Fi
                       </button>
                     )}
-                    {(!staff || can("bookingsExtend")) && (
+                    {!b.passDays && (!staff || can("bookingsExtend")) && (
                       <button
                         className="ghost small"
                         disabled={busy}
@@ -261,7 +280,7 @@ export default function BookingsPage({
                   </>
                 )}
                 {staff &&
-                  can("bookingsConfirm") &&
+                  can("paymentsCollect") && (status(b)==="Pending" || balance(b)>0) &&
                   ["Pending", "Confirmed"].includes(status(b)) && (
                     <button
                       className="ghost small"
@@ -322,8 +341,8 @@ export default function BookingsPage({
               <CalendarDays />
               <h3>No bookings here yet</h3>
               <p>
-                {search || date
-                  ? "Try a different search or date."
+                {search || fromDate || toDate
+                  ? "Try a different search or date range."
                   : "Your next workday is just a booking away."}
               </p>
               <button className="primary" onClick={book}>
@@ -356,7 +375,8 @@ export default function BookingsPage({
         >
           <p>
             {cancelling.label} · {cancelling.date}. The reserved space will be
-            released. Any recorded payment will enter refund review.
+            released. Refund eligible for review: {money(cancellationQuote(cancelling).refund)}.
+            {cancellationQuote(cancelling).beforeCutoff ? " This is before the cancellation cutoff." : " The cancellation cutoff has passed."}
           </p>
           {error && <p className="inlineError">{error}</p>}
           <button
@@ -373,99 +393,7 @@ export default function BookingsPage({
           </button>
         </Dialog>
       )}
-      {payment && (
-        <Dialog
-          title="Review payment"
-          onClose={() => !busy && setPayment(null)}
-        >
-          <p>
-            {payment.b.customerName} · {payment.b.label}
-          </p>
-          <div className="fieldGrid">
-            {can("bookingsDiscount") && (
-              <label>
-                Additional discount ₹
-                <input
-                  type="number"
-                  min="0"
-                  max={payment.b.total}
-                  value={payment.discount}
-                  onChange={(e) =>
-                    setPayment({ ...payment, discount: Number(e.target.value) })
-                  }
-                />
-              </label>
-            )}
-            <label>
-              Total amount received ₹
-              <input
-                type="number"
-                min="0"
-                value={payment.received}
-                onChange={(e) =>
-                  setPayment({ ...payment, received: Number(e.target.value) })
-                }
-              />
-            </label>
-            <label>
-              Payment method
-              <select
-                value={payment.method}
-                onChange={(e) =>
-                  setPayment({ ...payment, method: e.target.value })
-                }
-              >
-                <option>UPI</option>
-                <option>Cash</option>
-                <option>Other</option>
-              </select>
-            </label>
-            <label>
-              Payment reference
-              <input
-                value={payment.ref}
-                onChange={(e) =>
-                  setPayment({ ...payment, ref: e.target.value })
-                }
-              />
-            </label>
-          </div>
-          <p>
-            Booking total:{" "}
-            <strong>
-              ₹{Math.max(0, Number(payment.b.total || 0) - payment.discount)}
-            </strong>
-          </p>
-          <small>
-            Enter the cumulative amount received. Confirming with ₹0 keeps
-            payment pending.
-          </small>
-          {error && <p className="inlineError">{error}</p>}
-          <div className="formActions">
-            <button
-              className="primary"
-              disabled={busy}
-              onClick={() =>
-                run(
-                  () =>
-                    confirmBooking(
-                      payment.b.id,
-                      user.uid,
-                      Number(payment.b.staffDiscount || 0) + payment.discount,
-                      payment.received,
-                      payment.method,
-                      payment.ref,
-                    ),
-                  "Booking and payment updated.",
-                )
-              }
-            >
-              <CheckCircle2 size={17} />
-              {busy ? "Saving…" : "Save & confirm"}
-            </button>
-          </div>
-        </Dialog>
-      )}
+      {payment && <PaymentDialog booking={payment.b} canDiscount={can("bookingsDiscount")} onClose={()=>setPayment(null)} onSaved={(receipt:string)=>{setPayment(null);onFlash(`Payment saved. Receipt ${receipt}.`);}}/>}
     </section>
   );
 }

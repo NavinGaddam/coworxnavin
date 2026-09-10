@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useRef,useState} from "react";
+import {useEffect,useId,useMemo,useRef,useState} from "react";
 import {ChevronLeft,ChevronRight,Calendar as CalIcon} from "lucide-react";
 import "./datepicker.css";
 
@@ -7,6 +7,21 @@ const DOW=["Su","Mo","Tu","We","Th","Fr","Sa"];
 const fmt=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const parse=(s:string)=>{const [y,m,d]=s.split("-").map(Number);return new Date(y,(m||1)-1,d||1);};
 const niceDate=(s:string)=>{if(!s)return "";const d=parse(s);return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)} ${d.getFullYear()}`;};
+const initialView=(value?:string,min?:string,max?:string)=>{if(value)return parse(value);if(min&&max&&parse(max).getFullYear()-parse(min).getFullYear()>20){const end=parse(max);return new Date(end.getFullYear()-25,end.getMonth(),1);}return parse(min||fmt(new Date()));};
+
+function MonthYearSelect({view,setView,min,max}:{view:Date;setView:(d:Date)=>void;min?:string;max?:string}){
+  const minYear=min?parse(min).getFullYear():view.getFullYear()-100;
+  const maxYear=max?parse(max).getFullYear():view.getFullYear()+20;
+  const years=Array.from({length:Math.max(1,maxYear-minYear+1)},(_,i)=>maxYear-i);
+  return <div className="dpMonthYear">
+    <select aria-label="Calendar month" value={view.getMonth()} onChange={e=>setView(new Date(view.getFullYear(),Number(e.target.value),1))}>
+      {MONTHS.map((month,index)=><option value={index} key={month}>{month}</option>)}
+    </select>
+    <select aria-label="Calendar year" value={view.getFullYear()} onChange={e=>setView(new Date(Number(e.target.value),view.getMonth(),1))}>
+      {years.map(year=><option key={year}>{year}</option>)}
+    </select>
+  </div>;
+}
 
 function Month({view,min,max,onPick,selected,rangeStart,rangeEnd,highlight}:{view:Date;min?:string;max?:string;onPick:(s:string)=>void;selected?:string;rangeStart?:string;rangeEnd?:string;highlight?:(s:string)=>string|undefined}){
   const year=view.getFullYear(),month=view.getMonth();
@@ -33,15 +48,17 @@ function Month({view,min,max,onPick,selected,rangeStart,rangeEnd,highlight}:{vie
 
 export function DatePicker({value,onChange,min,max,label,placeholder="Select date"}:{value:string;onChange:(v:string)=>void;min?:string;max?:string;label?:string;placeholder?:string}){
   const [open,setOpen]=useState(false);
-  const [view,setView]=useState(()=>parse(value||min||fmt(new Date())));
+  const [view,setView]=useState(()=>initialView(value,min,max));
   const ref=useRef<HTMLDivElement>(null);
+  const inputId=useId();
   useEffect(()=>{const onDoc=(e:MouseEvent)=>{if(ref.current&&!ref.current.contains(e.target as Node))setOpen(false)};document.addEventListener("mousedown",onDoc);return()=>document.removeEventListener("mousedown",onDoc)},[]);
-  useEffect(()=>{if(open)setView(parse(value||min||fmt(new Date())))},[open]);
+  useEffect(()=>{if(open)setView(initialView(value,min,max))},[open,value,min,max]);
   return <div className="dpWrap" ref={ref}>
-    {label&&<span className="dpLabel">{label}</span>}
+    {label&&<label className="dpLabel" htmlFor={inputId}>{label}</label>}
+    <input id={inputId} className="dpValueInput" type="date" tabIndex={-1} min={min} max={max} value={value} onChange={e=>onChange(e.target.value)}/>
     <button type="button" className="dpTrigger" onClick={()=>setOpen(v=>!v)}><CalIcon size={15}/><span>{value?niceDate(value):placeholder}</span></button>
     {open&&<div className="dpPopover">
-      <div className="dpNav"><button type="button" onClick={()=>setView(new Date(view.getFullYear(),view.getMonth()-1,1))}><ChevronLeft size={16}/></button><span>{MONTHS[view.getMonth()]} {view.getFullYear()}</span><button type="button" onClick={()=>setView(new Date(view.getFullYear(),view.getMonth()+1,1))}><ChevronRight size={16}/></button></div>
+      <div className="dpNav"><button type="button" aria-label="Previous month" onClick={()=>setView(new Date(view.getFullYear(),view.getMonth()-1,1))}><ChevronLeft size={16}/></button><MonthYearSelect view={view} setView={setView} min={min} max={max}/><button type="button" aria-label="Next month" onClick={()=>setView(new Date(view.getFullYear(),view.getMonth()+1,1))}><ChevronRight size={16}/></button></div>
       <Month view={view} min={min} max={max} selected={value} onPick={s=>{onChange(s);setOpen(false)}}/>
     </div>}
   </div>;
@@ -65,7 +82,7 @@ export function DateRangePicker({start,end,onChange,min,max,highlight}:{start:st
       <button type="button" className="dpTrigger" onClick={()=>{setPicking("end");setOpen(true);setView(parse(end||start||min||fmt(new Date())))}}><CalIcon size={15}/><span>{niceDate(end)}</span></button>
     </div>
     {open&&<div className="dpPopover dpPopoverRange">
-      <div className="dpNav"><button type="button" onClick={()=>setView(new Date(view.getFullYear(),view.getMonth()-1,1))}><ChevronLeft size={16}/></button><span>{picking==="start"?"Pick start date":"Pick end date"}</span><button type="button" onClick={()=>setView(new Date(view.getFullYear(),view.getMonth()+1,1))}><ChevronRight size={16}/></button></div>
+      <div className="dpNav"><button type="button" aria-label="Previous month" onClick={()=>setView(new Date(view.getFullYear(),view.getMonth()-1,1))}><ChevronLeft size={16}/></button><span>{picking==="start"?"Pick start date":"Pick end date"}</span><button type="button" aria-label="Next month" onClick={()=>setView(new Date(view.getFullYear(),view.getMonth()+1,1))}><ChevronRight size={16}/></button></div>
       <div className="dpTwoMonths">
         <Month view={view} min={min} max={max} rangeStart={start} rangeEnd={end} highlight={highlight} onPick={pick}/>
         <Month view={nextView} min={min} max={max} rangeStart={start} rangeEnd={end} highlight={highlight} onPick={pick}/>

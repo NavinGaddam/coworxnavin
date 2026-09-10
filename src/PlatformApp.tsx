@@ -1,9 +1,11 @@
+import { DEFAULT_POLICY } from "./lib/business";
 import {
   lazy,
   Suspense,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -16,6 +18,9 @@ import { auth } from "./firebase";
 import { validPhone } from "./lib/customer";
 import {
   CalendarDays,
+  WalletCards,
+  Ticket,
+  Plus,
   Home,
   LayoutDashboard,
   LogOut,
@@ -29,6 +34,9 @@ import {
   X,
   WifiOff,
   ArrowUpRight,
+  Camera,
+  Inbox,
+  Trash2,
 } from "lucide-react";
 import {
   ADMIN_EMAILS,
@@ -70,9 +78,14 @@ import CustomerHome from "./pages/CustomerHome";
 import Dialog from "./components/Dialog";
 import CommandSearch from "./components/CommandSearch";
 import InstallApp from "./components/InstallApp";
+import UserAvatar from "./components/UserAvatar";
+import { DatePicker } from "./pages/DatePicker";
+import { prepareProfileImage } from "./lib/profileImage";
 import logo from "./assets/coworx-logo-full.png";
 const BookingPage = lazy(() => import("./pages/Booking"));
 const BookingsPage = lazy(() => import("./pages/BookingsPage"));
+const Collections = lazy(() => import("./pages/Collections"));
+const CustomerDirectory = lazy(() => import("./pages/CustomerDirectory"));
 const Reception = lazy(() => import("./pages/Reception"));
 const Administration = lazy(() => import("./pages/Administration"));
 const Operations = lazy(() => import("./pages/OperationsSuite"));
@@ -97,11 +110,10 @@ const operationalPages: [string, string, Permission, string][] = [
   ["ops:holidays", "Holidays", "resourcesManage", "Workspace"],
   ["ops:pricing", "Pricing", "pricingManage", "Workspace"],
   ["ops:catalog", "Plans & offers", "catalogManage", "Workspace"],
-  ["ops:addons", "Add-ons", "catalogManage", "Workspace"],
   ["ops:wednesday", "Wednesday policy", "pricingManage", "Workspace"],
   ["ops:banners", "Homepage notices", "noticesManage", "Communications"],
   ["ops:comms", "Message templates", "communicationsManage", "Communications"],
-  ["ops:revenue", "Revenue", "revenueView", "Finance"],
+  ["ops:revenue", "Booking value", "revenueView", "Finance"],
   ["ops:refunds", "Refunds", "refundsManage", "Finance"],
 ];
 export default function PlatformApp() {
@@ -119,6 +131,7 @@ export default function PlatformApp() {
     [command, setCommand] = useState(false),
     [profileOpen, setProfileOpen] = useState(false),
     [profileDraft, setProfileDraft] = useState<any>({}),
+    [photoBusy, setPhotoBusy] = useState(false),
     [saving, setSaving] = useState(false);
   const [matrix, setMatrix] = useState<PermissionMatrix>(DEFAULT_PERMISSIONS),
     [admins, setAdmins] = useState<string[]>(ADMIN_EMAILS),
@@ -134,6 +147,7 @@ export default function PlatformApp() {
     [blocks, setBlocks] = useState<any[]>([]),
     [availabilityLoaded, setAvailabilityLoaded] = useState(false),
     [assignment, setAssignment] = useState<any>(null);
+  const [businessPolicy, setBusinessPolicy] = useState<any>(DEFAULT_POLICY);
   const [company, setCompany] = useState<any>(companyDefault),
     [wifi, setWifi] = useState<any>({}),
     [upi, setUpi] = useState<any>({}),
@@ -152,6 +166,9 @@ export default function PlatformApp() {
     [podDuration, setPodDuration] = useState(1);
   const [clock, setClock] = useState(Date.now());
   const businessToday = localToday();
+  const [initialCustomer, setInitialCustomer] = useState<any>(null),
+    [scanRequest, setScanRequest] = useState(0);
+  const routed = useRef("");
   const [customerQuery, setCustomerQuery] = useState("");
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 30000);
@@ -173,6 +190,22 @@ export default function PlatformApp() {
   );
   const hasStaffAccess = role !== "User";
   const hasAdmin = PERMISSION_ADMIN.some(can);
+  useEffect(() => {
+    if (!profile || !user) return;
+    const key = `${user.uid}:${role}`;
+    if (routed.current === key) return;
+    routed.current = key;
+    if (hasStaffAccess && !window.location.search)
+      setPage(
+        role === "Receptionist" && can("checkIn")
+          ? "reception"
+          : can("bookingsView")
+            ? "dashboard"
+            : hasAdmin
+              ? "administration"
+              : "home",
+      );
+  }, [profile, role, user?.uid]);
   const reportError = useCallback(
     (e: any) => setFlash(e?.message || "Could not load workspace data."),
     [],
@@ -235,7 +268,7 @@ export default function PlatformApp() {
       watchPermissions(setMatrix, reportError),
       watchAdmins(setAdmins, reportError),
       watchRoleAssignment(user.email || "", setAssignment),
-      watchOffers(user.email || "", setOffers),
+      watchOffers(user.email || "", setOffers, reportError),
       watchSetting(
         "company",
         (data) => setCompany({ ...companyDefault, ...data }),
@@ -265,6 +298,11 @@ export default function PlatformApp() {
   useEffect(() => {
     const stops = [
       watchBanners(setBanners),
+      watchSetting(
+        "policy",
+        (p) => setBusinessPolicy({ ...DEFAULT_POLICY, ...p }),
+        reportError,
+      ),
       watchSetting("pricing", (data) =>
         setPrices({ ...DEFAULT_PRICING, ...data }),
       ),
@@ -349,6 +387,7 @@ export default function PlatformApp() {
     setSpace(s);
     setSelectedSeats([]);
     setDate(localToday());
+    setInitialCustomer(null);
     setStaffBooking(walkIn && can("bookingsCreate"));
     nav("book");
   };
@@ -390,29 +429,49 @@ export default function PlatformApp() {
       gender: profile?.gender || "",
       dob: profile?.dob || "",
       profession: profile?.profession || "",
+      photoURL: profile?.photoURL || "",
+      company: profile?.company || "",
+      gstNumber: profile?.gstNumber || "",
+      billingAddress: profile?.billingAddress || "",
+      reminderPreferences: profile?.reminderPreferences || {
+        booking: true,
+        expiry: true,
+        balance: true,
+      },
     });
     setProfileOpen(true);
   };
   const staffPage =
-    ["dashboard", "reception", "staff-bookings", "administration"].includes(
-      page,
-    ) || page.startsWith("ops:");
+    [
+      "dashboard",
+      "reception",
+      "staff-bookings",
+      "administration",
+      "passes",
+      "collections",
+    ].includes(page) ||
+    page.startsWith("ops:") ||
+    (page === "book" && staffBooking);
   const permitted =
-    page === "dashboard"
-      ? can("bookingsView")
-      : page === "reception"
-        ? can("bookingsView") && (can("checkIn") || can("checkOut"))
-        : page === "staff-bookings"
+    page === "passes"
+      ? can("passesView")
+      : page === "collections"
+        ? can("collectionsView")
+        : page === "dashboard"
           ? can("bookingsView")
-          : page === "administration"
-            ? hasAdmin
-            : page.startsWith("ops:")
-              ? can(
-                  operationalPages.find(
-                    ([id]) => id === page,
-                  )?.[2] as Permission,
-                )
-              : true;
+          : page === "reception"
+            ? can("bookingsView") && (can("checkIn") || can("checkOut"))
+            : page === "staff-bookings"
+              ? can("bookingsView")
+              : page === "administration"
+                ? hasAdmin
+                : page.startsWith("ops:")
+                  ? can(
+                      operationalPages.find(
+                        ([id]) => id === page,
+                      )?.[2] as Permission,
+                    )
+                  : true;
   const liveLocks = locks.filter(
     (l) =>
       l.status === "Confirmed" ||
@@ -439,7 +498,7 @@ export default function PlatformApp() {
   );
   return (
     <div className="platformApp">
-      <header className="siteHeader">
+      <header className={`siteHeader ${staffPage ? "staffHeader" : ""}`}>
         <button
           className="siteBrand"
           onClick={() => nav("home")}
@@ -447,48 +506,50 @@ export default function PlatformApp() {
         >
           <img src={logo} alt="Coworx Central" />
         </button>
-        <nav className="siteNav" aria-label="Main navigation">
-          <button
-            className={page === "home" ? "active" : ""}
-            onClick={() => nav("home")}
-          >
-            Home
-          </button>
-          <button
-            className={page === "book" ? "active" : ""}
-            onClick={() => book()}
-          >
-            Workspaces
-          </button>
-          {user && (
+        {!staffPage && (
+          <nav className="siteNav" aria-label="Main navigation">
             <button
-              className={page === "bookings" ? "active" : ""}
-              onClick={() => nav("bookings")}
+              className={page === "home" ? "active" : ""}
+              onClick={() => nav("home")}
             >
-              My bookings
+              Home
             </button>
-          )}
-          <button onClick={() => nav(user ? "offers" : "amenities")}>
-            {user ? "Offers" : "Amenities"}
-          </button>
-          {hasStaffAccess && (
             <button
-              className={staffPage ? "active" : ""}
-              onClick={() =>
-                nav(
-                  can("bookingsView")
-                    ? "dashboard"
-                    : hasAdmin
-                      ? "administration"
-                      : operationalPages.find(([, , p]) => can(p))?.[0] ||
-                        "home",
-                )
-              }
+              className={page === "book" ? "active" : ""}
+              onClick={() => book()}
             >
-              Staff workspace
+              Workspaces
             </button>
-          )}
-        </nav>
+            {user && (
+              <button
+                className={page === "bookings" ? "active" : ""}
+                onClick={() => nav("bookings")}
+              >
+                My bookings
+              </button>
+            )}
+            <button onClick={() => nav(user ? "offers" : "amenities")}>
+              {user ? "Offers" : "Amenities"}
+            </button>
+            {hasStaffAccess && (
+              <button
+                className={staffPage ? "active" : ""}
+                onClick={() =>
+                  nav(
+                    can("bookingsView")
+                      ? "dashboard"
+                      : hasAdmin
+                        ? "administration"
+                        : operationalPages.find(([, , p]) => can(p))?.[0] ||
+                          "home",
+                  )
+                }
+              >
+                Staff workspace
+              </button>
+            )}
+          </nav>
+        )}
         <div className="headerTools">
           <button
             className="commandTrigger"
@@ -496,7 +557,8 @@ export default function PlatformApp() {
             aria-label="Open search"
           >
             <Search size={17} />
-            <kbd>⌘ K</kbd>
+            {staffPage && <span>Search customer or desk</span>}
+            <kbd>Ctrl K</kbd>
           </button>
           <button
             className="iconButton"
@@ -511,7 +573,14 @@ export default function PlatformApp() {
               onClick={openProfile}
               aria-label="Open my profile"
             >
-              {(user.displayName || user.email || "?")[0]}
+              <UserAvatar
+                profile={{
+                  ...user,
+                  ...profile,
+                  name: profile?.name || user.displayName,
+                }}
+                size={44}
+              />
             </button>
           ) : (
             <button className="primary small" onClick={login} disabled={saving}>
@@ -528,6 +597,50 @@ export default function PlatformApp() {
           </button>
         </div>
       </header>
+      {staffPage && (
+        <div className="staffCommandBar">
+          <nav className="primaryStaffNav" aria-label="Daily work">
+            {can("bookingsView") &&
+              navButton(
+                role === "Receptionist" ? "reception" : "dashboard",
+                role === "Receptionist" ? "Front Desk" : "Overview",
+                LayoutDashboard,
+              )}
+            {role !== "Receptionist" &&
+              (can("checkIn") || can("checkOut")) &&
+              navButton("reception", "Front Desk", ScanLine)}
+            {can("bookingsView") &&
+              navButton("staff-bookings", "All bookings", CalendarDays)}
+            {can("enquiriesManage") &&
+              navButton("ops:enquiries", "Enquiries", Inbox)}
+            {can("customersView") &&
+              navButton("ops:customers", "Customers", Users)}
+            {can("passesView") && navButton("passes", "Passes", Ticket)}
+            {can("collectionsView") &&
+              navButton("collections", "Collections", WalletCards)}
+          </nav>
+          <div className="staffQuickActions">
+            {(can("checkIn") || can("checkOut")) && (
+              <button
+                className="ghost"
+                onClick={() => {
+                  nav("reception");
+                  setScanRequest((x) => x + 1);
+                }}
+              >
+                <ScanLine size={19} />
+                Scan pass
+              </button>
+            )}
+            {can("bookingsCreate") && (
+              <button className="primary" onClick={() => book("desk", true)}>
+                <Plus size={19} />
+                New booking
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {!online && (
         <div className="offlineBanner" role="status">
           <WifiOff size={17} /> You’re offline. Saved bookings and passes remain
@@ -594,35 +707,32 @@ export default function PlatformApp() {
       <div className={staffPage ? "staffLayout" : "customerLayout"}>
         {staffPage && (
           <aside className="workspaceSidebar">
-            <span className="sidebarEyebrow">STAFF WORKSPACE</span>
-            {can("bookingsView") && (
-              <>
-                {navButton("dashboard", "Overview", LayoutDashboard)}
-                {navButton("staff-bookings", "Bookings", CalendarDays)}
-              </>
-            )}
-            {(can("checkIn") || can("checkOut")) &&
-              navButton("reception", "Front desk", ScanLine)}
+            <span className="sidebarEyebrow">ADVANCED TOOLS</span>
             {operationalPages
-              .filter(([, , p]) => can(p))
+              .filter(
+                ([id, , permission]) =>
+                  !["ops:customers", "ops:enquiries"].includes(id) &&
+                  can(permission),
+              )
               .map(([id, label, , group], i, all) => (
                 <div key={id}>
                   {(!i || all[i - 1][3] !== group) && (
                     <span className="sidebarGroup">{group}</span>
                   )}
-                  {navButton(id, label, group === "People" ? Users : Settings2)}
+                  {navButton(id, label, Settings2)}
                 </div>
               ))}
-            {hasAdmin && (
-              <>
-                <span className="sidebarGroup">Business</span>
-                {navButton("administration", "Administration", Settings2)}
-              </>
-            )}
+            {hasAdmin &&
+              navButton("administration", "Business settings", Settings2)}
             <div className="sidebarIdentity">
-              <span className="avatar small">
-                {(user?.displayName || "?")[0]}
-              </span>
+              <UserAvatar
+                profile={{
+                  ...user,
+                  ...profile,
+                  name: profile?.name || user?.displayName,
+                }}
+                size={38}
+              />
               <span>
                 <b>{user?.displayName?.split(" ")[0]}</b>
                 <small>{owner ? "Owner" : role}</small>
@@ -659,12 +769,18 @@ export default function PlatformApp() {
                   <CustomerHome
                     user={user}
                     prices={prices}
+                    profile={profile}
+                    policy={businessPolicy}
                     bookings={bookings}
                     activeLocks={liveLocks}
                     maintenance={blocks}
                     offers={offers}
+                    upi={upi}
                     banners={activeBanners}
                     availabilityLoaded={availabilityLoaded}
+                    online={online}
+                    wifi={wifi}
+                    company={company}
                     nav={nav}
                     book={book}
                   />
@@ -695,7 +811,9 @@ export default function PlatformApp() {
                     user={user}
                     role={role}
                     staff={can("bookingsCreate")}
-                    canConfirm={can("bookingsConfirm")}
+                    canConfirm={can("paymentsCollect")}
+                    canDiscount={can("bookingsDiscount")}
+                    initialCustomer={initialCustomer}
                     canCreateCustomer={can("customersCreate")}
                     users={users}
                     nav={nav}
@@ -714,6 +832,14 @@ export default function PlatformApp() {
                       gender: profile?.gender || "",
                       dob: profile?.dob || "",
                       profession: profile?.profession || "",
+                      company: profile?.company || "",
+                      gstNumber: profile?.gstNumber || "",
+                      billingAddress: profile?.billingAddress || "",
+                      reminderPreferences: profile?.reminderPreferences || {
+                        booking: true,
+                        expiry: true,
+                        balance: true,
+                      },
                     }}
                     onProfileSaved={(data: any) =>
                       setProfile({ ...profile, ...data, phone: data.mobile })
@@ -735,24 +861,26 @@ export default function PlatformApp() {
                     setPodDuration={setPodDuration}
                   />
                 )}
-                {(page === "bookings" || page === "staff-bookings") && user && (
-                  <BookingsPage
-                    key={page}
-                    user={user}
-                    bookings={
-                      page === "staff-bookings" ? staffBookings : bookings
-                    }
-                    staff={page === "staff-bookings"}
-                    can={can}
-                    company={company}
-                    wifi={wifi}
-                    onFlash={setFlash}
-                    loading={
-                      page === "staff-bookings" ? staffLoading : bookingsLoading
-                    }
-                    book={() => book("desk", page === "staff-bookings")}
-                  />
-                )}
+                {(page === "bookings" ||
+                  page === "staff-bookings" ||
+                  page === "passes") &&
+                  user && (
+                    <BookingsPage
+                      key={page}
+                      user={user}
+                      bookings={page !== "bookings" ? staffBookings : bookings}
+                      staff={page !== "bookings"}
+                      passesOnly={page === "passes"}
+                      can={can}
+                      company={company}
+                      wifi={wifi}
+                      onFlash={setFlash}
+                      loading={
+                        page !== "bookings" ? staffLoading : bookingsLoading
+                      }
+                      book={() => book("desk", page !== "bookings")}
+                    />
+                  )}
                 {page === "dashboard" && (
                   <Dashboard
                     user={user}
@@ -767,6 +895,7 @@ export default function PlatformApp() {
                 )}
                 {page === "reception" && (
                   <Reception
+                    scanRequest={scanRequest}
                     bookings={staffBookings}
                     can={can}
                     onFlash={setFlash}
@@ -783,11 +912,35 @@ export default function PlatformApp() {
                     admins={admins}
                     logs={logs}
                     matrix={matrix}
+                    bookings={staffBookings}
                     can={can}
                     onFlash={setFlash}
                   />
                 )}
-                {page.startsWith("ops:") && (
+                {page === "collections" && (
+                  <Collections
+                    bookings={staffBookings}
+                    can={can}
+                    company={company}
+                    onFlash={setFlash}
+                  />
+                )}
+                {page === "ops:customers" && (
+                  <CustomerDirectory
+                    users={users}
+                    bookings={staffBookings}
+                    user={user}
+                    can={can}
+                    company={company}
+                    onFlash={setFlash}
+                    initialQuery={customerQuery}
+                    bookCustomer={(customer: any) => {
+                      book("desk", true);
+                      setInitialCustomer(customer);
+                    }}
+                  />
+                )}
+                {page.startsWith("ops:") && page !== "ops:customers" && (
                   <Operations
                     key={page}
                     initialTab={page.slice(4)}
@@ -848,13 +1001,62 @@ export default function PlatformApp() {
       )}
       {profileOpen && (
         <Dialog title="Your profile" onClose={() => setProfileOpen(false)}>
-          <p>
-            {user?.displayName} · {user?.email}
-          </p>
+          <div className="profilePhotoEditor">
+            <UserAvatar
+              profile={{ ...user, ...profileDraft, name: user?.displayName }}
+              size={78}
+            />
+            <div>
+              <strong>{user?.displayName}</strong>
+              <span>{user?.email}</span>
+              <small>
+                Profile photo is optional. A gender-based avatar is used when
+                none is added.
+              </small>
+            </div>
+            <label className="ghost profilePhotoButton">
+              <Camera size={17} />
+              {photoBusy
+                ? "Preparing…"
+                : profileDraft.photoURL
+                  ? "Change photo"
+                  : "Add photo"}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={photoBusy || saving}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setPhotoBusy(true);
+                  try {
+                    const photoURL = await prepareProfileImage(file);
+                    setProfileDraft({ ...profileDraft, photoURL });
+                  } catch (error) {
+                    reportError(error);
+                  } finally {
+                    setPhotoBusy(false);
+                    e.target.value = "";
+                  }
+                }}
+              />
+            </label>
+            {profileDraft.photoURL && (
+              <button
+                className="textButton dangerText"
+                type="button"
+                onClick={() =>
+                  setProfileDraft({ ...profileDraft, photoURL: "" })
+                }
+              >
+                <Trash2 size={16} />
+                Remove
+              </button>
+            )}
+          </div>
           <div className="fieldGrid">
             {[
               ["phone", "Mobile", "tel"],
-              ["dob", "Date of birth", "date"],
               ["profession", "Profession", "text"],
             ].map(([key, label, type]) => (
               <label key={key}>
@@ -866,6 +1068,71 @@ export default function PlatformApp() {
                     setProfileDraft({ ...profileDraft, [key]: e.target.value })
                   }
                 />
+              </label>
+            ))}
+            <div className="customerDateField">
+              <DatePicker
+                label="Date of birth"
+                value={profileDraft.dob || ""}
+                min="1900-01-01"
+                max={localToday()}
+                placeholder="Choose date of birth"
+                onChange={(dob) => setProfileDraft({ ...profileDraft, dob })}
+              />
+            </div>
+            <label>
+              Gender
+              <select
+                value={profileDraft.gender || ""}
+                onChange={(e) =>
+                  setProfileDraft({ ...profileDraft, gender: e.target.value })
+                }
+              >
+                <option value="">Prefer not to say</option>
+                <option>Female</option>
+                <option>Male</option>
+                <option>Other</option>
+              </select>
+            </label>
+          </div>
+          <div className="fieldGrid">
+            {[
+              ["company", "Company"],
+              ["gstNumber", "GST number"],
+              ["billingAddress", "Billing address"],
+            ].map(([key, label]) => (
+              <label key={key}>
+                {label}
+                <input
+                  value={profileDraft[key] || ""}
+                  onChange={(e) =>
+                    setProfileDraft({ ...profileDraft, [key]: e.target.value })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+          <div className="preferenceRow">
+            {[
+              ["booking", "Booking reminders"],
+              ["expiry", "Pass expiry reminders"],
+              ["balance", "Payment reminders"],
+            ].map(([key, label]) => (
+              <label className="checkLabel" key={key}>
+                <input
+                  type="checkbox"
+                  checked={profileDraft.reminderPreferences?.[key] !== false}
+                  onChange={(e) =>
+                    setProfileDraft({
+                      ...profileDraft,
+                      reminderPreferences: {
+                        ...profileDraft.reminderPreferences,
+                        [key]: e.target.checked,
+                      },
+                    })
+                  }
+                />
+                {label}
               </label>
             ))}
           </div>

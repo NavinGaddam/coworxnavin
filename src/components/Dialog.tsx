@@ -5,6 +5,7 @@ export default function Dialog({
   onClose,
   children,
   wide = false,
+  footer,
 }: any) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -20,7 +21,7 @@ export default function Dialog({
   return (
     <dialog
       ref={ref}
-      className={`platformDialog ${wide ? "wide" : ""}`}
+      className={`platformDialog ${wide ? "wide" : ""} ${footer ? "withFooter" : ""}`}
       aria-label={title}
       onCancel={(e) => {
         e.preventDefault();
@@ -40,7 +41,7 @@ export default function Dialog({
           <X size={20} />
         </button>
       </div>
-      {children}
+      {footer ? <><div className="dialogBody">{children}</div><div className="dialogFooter">{footer}</div></> : children}
     </dialog>
   );
 }
