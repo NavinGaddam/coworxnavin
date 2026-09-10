@@ -789,6 +789,72 @@ fieldset {
   margin-left: auto;
   color: var(--muted);
 }
+.offlineAccess {
+  margin: -20px 0 38px;
+  padding: 22px 24px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--card));
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  gap: 24px;
+  align-items: center;
+}
+.offlineAccess h2 {
+  margin: 7px 0 5px;
+  font-size: 21px;
+}
+.offlineAccess p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.offlineAccessActions {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.offlineAccessActions > a,
+.offlineAccessActions > button {
+  min-height: 48px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.offlineWifi {
+  min-width: 170px;
+  padding: 8px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.offlineWifi > svg {
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+.offlineWifi span {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.offlineWifi small {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+.offlineWifi b,
+.offlineWifi code {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.offlineWifi code {
+  color: var(--muted);
+}
 .staffLayout {
   display: grid;
   grid-template-columns: 214px minmax(0, 1fr);
@@ -1367,8 +1433,15 @@ fieldset {
   padding: 0 16px;
   font-size: 12px;
 }
-.customerDateField{display:grid;gap:6px;align-content:start}
-.customerDateField .dpWrap,.customerDateField .dpTrigger{width:100%}
+.customerDateField {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.customerDateField .dpWrap,
+.customerDateField .dpTrigger {
+  width: 100%;
+}
 .newCustomerButton {
   color: var(--accent) !important;
   font-weight: 700;
@@ -1382,20 +1455,89 @@ fieldset {
 .selectedCustomer > div:not(.avatar) {
   flex: 1;
 }
-.selectedCustomer > .avatar,.selectedCustomer > .userAvatar{flex:0 0 auto}
-.userAvatar{display:inline-grid;place-items:center;flex:0 0 auto;overflow:hidden;border-radius:50%;border:1px solid var(--line);background:var(--soft);color:var(--muted)}
-.userAvatar img{width:100%;height:100%;object-fit:cover;display:block}
-.userAvatar svg{width:56%;height:56%}
-.userAvatar-female{background:color-mix(in srgb,#b45bbd 13%,var(--card));color:#a64fad;border-color:color-mix(in srgb,#b45bbd 26%,var(--line))}
-.userAvatar-male{background:color-mix(in srgb,#397ad1 13%,var(--card));color:#397ad1;border-color:color-mix(in srgb,#397ad1 26%,var(--line))}
-.userAvatar-neutral{background:color-mix(in srgb,var(--green) 10%,var(--card));color:var(--green)}
-.accountAvatar .userAvatar{border:0}
-.profilePhotoEditor{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:16px;margin-bottom:20px;border:1px solid var(--line);border-radius:16px;background:var(--soft)}
-.profilePhotoEditor>div{display:grid;gap:3px;flex:1;min-width:180px}
-.profilePhotoEditor span,.profilePhotoEditor small{color:var(--muted)}
-.profilePhotoEditor small{font-size:12px;line-height:1.45}
-.profilePhotoButton{position:relative;overflow:hidden;cursor:pointer;display:inline-flex!important;align-items:center;justify-content:center;gap:8px}
-.profilePhotoButton input{position:absolute!important;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.selectedCustomer > .avatar,
+.selectedCustomer > .userAvatar {
+  flex: 0 0 auto;
+}
+.userAvatar {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  color: var(--muted);
+}
+.userAvatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.userAvatar svg {
+  width: 56%;
+  height: 56%;
+}
+.userAvatar-female {
+  background: color-mix(in srgb, #b45bbd 13%, var(--card));
+  color: #a64fad;
+  border-color: color-mix(in srgb, #b45bbd 26%, var(--line));
+}
+.userAvatar-male {
+  background: color-mix(in srgb, #397ad1 13%, var(--card));
+  color: #397ad1;
+  border-color: color-mix(in srgb, #397ad1 26%, var(--line));
+}
+.userAvatar-neutral {
+  background: color-mix(in srgb, var(--green) 10%, var(--card));
+  color: var(--green);
+}
+.accountAvatar .userAvatar {
+  border: 0;
+}
+.profilePhotoEditor {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--soft);
+}
+.profilePhotoEditor > div {
+  display: grid;
+  gap: 3px;
+  flex: 1;
+  min-width: 180px;
+}
+.profilePhotoEditor span,
+.profilePhotoEditor small {
+  color: var(--muted);
+}
+.profilePhotoEditor small {
+  font-size: 12px;
+  line-height: 1.45;
+}
+.profilePhotoButton {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.profilePhotoButton input {
+  position: absolute !important;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
 .selectedCustomer b,
 .selectedCustomer small {
   display: block;
@@ -1630,13 +1772,19 @@ fieldset {
   right: 8px;
 }
 .installSymbol {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  background: var(--accent);
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #fff;
   display: grid;
   place-items: center;
-  color: #fff;
+}
+.installSymbol img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .installCard h3 {
   font-size: 18px;
@@ -1968,6 +2116,12 @@ fieldset {
   .memberGrid {
     grid-template-columns: 1fr;
   }
+  .offlineAccess {
+    grid-template-columns: 1fr;
+  }
+  .offlineAccessActions {
+    flex-wrap: wrap;
+  }
   .amenityRibbon {
     padding: 22px 0;
     gap: 10px;
@@ -2204,6 +2358,22 @@ fieldset {
   }
   .memberWelcome .locationTag {
     display: none;
+  }
+  .offlineAccess {
+    margin-top: -12px;
+    padding: 20px;
+  }
+  .offlineAccessActions {
+    display: grid;
+  }
+  .offlineAccessActions > a,
+  .offlineAccessActions > button,
+  .offlineWifi {
+    width: 100%;
+  }
+  .offlineWifi b,
+  .offlineWifi code {
+    max-width: calc(90vw - 90px);
   }
   .quickSpaces {
     gap: 8px;

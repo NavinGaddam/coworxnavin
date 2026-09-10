@@ -9,7 +9,9 @@ import {
   Coffee,
   MapPin,
   Monitor,
+  Phone,
   Play,
+  QrCode,
   Wifi,
   Users,
   Mic2,
@@ -48,19 +50,41 @@ export default function CustomerHome({
   banners = [],
   availabilityLoaded = false,
   maintenance = [],
+  online = true,
+  wifi = {},
+  company = {},
 }: any) {
   const [tour, setTour] = useState<"video" | "360" | null>(null),
     [dismissed, setDismissed] = useState<string[]>([]);
   const today = localToday();
-  const hours=officeHours(today,policy);
-  const upcomingDate=(b:any)=>(b.dates||[b.date]).find((d:string)=>d>=today) || b.endDate || b.date;
-  const reminders=bookings.filter((b:any)=>b.status==="Confirmed").flatMap((b:any)=>{
-    const messages:string[]=[];const pref=profile?.reminderPreferences||{};
-    if(pref.balance!==false&&balance(b)>0&&b.balanceDueDate)messages.push(`${money(balance(b))} pass balance ${b.balanceDueDate<today?"overdue since":"due"} ${b.balanceDueDate}`);
-    if(pref.expiry!==false&&b.passDays&&b.endDate>=today&&new Date(b.endDate).getTime()-new Date(today).getTime()<=3*86400000)messages.push(`Your ${b.passDays}-day pass ends ${b.endDate}.`);
-    if(pref.booking!==false&&upcomingDate(b)===today)messages.push(`You’re booked today · ${b.label} · until ${sessionHours(b,today).end}.`);
-    return messages;
-  });
+  const hours = officeHours(today, policy);
+  const upcomingDate = (b: any) =>
+    (b.dates || [b.date]).find((d: string) => d >= today) ||
+    b.endDate ||
+    b.date;
+  const reminders = bookings
+    .filter((b: any) => b.status === "Confirmed")
+    .flatMap((b: any) => {
+      const messages: string[] = [];
+      const pref = profile?.reminderPreferences || {};
+      if (pref.balance !== false && balance(b) > 0 && b.balanceDueDate)
+        messages.push(
+          `${money(balance(b))} pass balance ${b.balanceDueDate < today ? "overdue since" : "due"} ${b.balanceDueDate}`,
+        );
+      if (
+        pref.expiry !== false &&
+        b.passDays &&
+        b.endDate >= today &&
+        new Date(b.endDate).getTime() - new Date(today).getTime() <=
+          3 * 86400000
+      )
+        messages.push(`Your ${b.passDays}-day pass ends ${b.endDate}.`);
+      if (pref.booking !== false && upcomingDate(b) === today)
+        messages.push(
+          `You’re booked today · ${b.label} · until ${sessionHours(b, today).end}.`,
+        );
+      return messages;
+    });
   const next = [...bookings]
     .filter(
       (b) =>
@@ -70,7 +94,9 @@ export default function CustomerHome({
         (b.endDate || b.date) >= today,
     )
     .sort((a, b) =>
-      (upcomingDate(a) + (a.start || "")).localeCompare(upcomingDate(b) + (b.start || "")),
+      (upcomingDate(a) + (a.start || "")).localeCompare(
+        upcomingDate(b) + (b.start || ""),
+      ),
     )[0];
   const occupied = new Set([
     ...activeLocks
@@ -138,78 +164,127 @@ export default function CustomerHome({
           </div>
         ))}
       {user ? (
-        <section className="memberWelcome">
-          <div className="sectionHeading">
-            <div>
-              <span className="eyebrow">YOUR COWORX</span>
-              <h1>
-                {greeting()}, {(user.displayName || "there").split(" ")[0]}.
-              </h1>
-              <p>Make room for a productive day.</p>
+        <>
+          <section className="memberWelcome">
+            <div className="sectionHeading">
+              <div>
+                <span className="eyebrow">YOUR COWORX</span>
+                <h1>
+                  {greeting()}, {(user.displayName || "there").split(" ")[0]}.
+                </h1>
+                <p>Make room for a productive day.</p>
+              </div>
+              <span className="locationTag">
+                <MapPin size={15} /> Solapur
+              </span>
             </div>
-            <span className="locationTag">
-              <MapPin size={15} /> Solapur
-            </span>
-          </div>
-          <div className="memberGrid">
-            <div>
-              <div className="quickSpaces">
-                {spaces.map(([s, , label, Icon]) => (
-                  <button key={s} onClick={() => book(s)}>
-                    <Icon size={23} />
-                    <b>
-                      {s === "desk"
-                        ? "Desk"
-                        : s === "meeting"
-                          ? "Meeting room"
-                          : s === "conference"
-                            ? "Conference"
-                            : "Studio"}
-                    </b>
-                    <ArrowUpRight size={15} />
+            <div className="memberGrid">
+              <div>
+                <div className="quickSpaces">
+                  {spaces.map(([s, , label, Icon]) => (
+                    <button key={s} onClick={() => book(s)}>
+                      <Icon size={23} />
+                      <b>
+                        {s === "desk"
+                          ? "Desk"
+                          : s === "meeting"
+                            ? "Meeting room"
+                            : s === "conference"
+                              ? "Conference"
+                              : "Studio"}
+                      </b>
+                      <ArrowUpRight size={15} />
+                    </button>
+                  ))}
+                </div>
+                <div className="memberAvailability">
+                  <span className="liveDot" />{" "}
+                  {availabilityLoaded
+                    ? hours.closed
+                      ? hours.reason
+                      : `${Math.max(0, 22 - occupied.size)} desks available today · ${hours.start}–${hours.end}`
+                    : "Loading today’s availability…"}
+                  <button className="textButton" onClick={() => book("desk")}>
+                    Find your spot <ArrowRight size={14} />
+                  </button>
+                </div>
+              </div>
+              <button
+                className="nextPassCard"
+                onClick={() => nav(next ? "bookings" : "book")}
+              >
+                <span className="eyebrow">
+                  {next ? "YOUR NEXT BOOKING" : "YOUR NEXT GREAT WORKDAY"}
+                </span>
+                <h3>{next ? next.label : "Your workspace is waiting."}</h3>
+                <p>
+                  {next
+                    ? `${upcomingDate(next)} · ${sessionHours(next, upcomingDate(next)).start}–${sessionHours(next, upcomingDate(next)).end}${next.passDays ? ` · Pass ends ${next.endDate}` : ""}`
+                    : "Choose a desk, meet your team, or record your next idea."}
+                </p>
+                <span>
+                  {next ? "View booking & pass" : "Explore workspaces"}{" "}
+                  <ArrowRight size={17} />
+                </span>
+              </button>
+            </div>
+            {reminders.length > 0 && (
+              <div className="memberReminders">
+                {reminders.slice(0, 4).map((text, i) => (
+                  <button
+                    className="noticeBox"
+                    key={i}
+                    onClick={() => nav("bookings")}
+                  >
+                    {text} <ArrowRight size={17} />
                   </button>
                 ))}
               </div>
-              <div className="memberAvailability">
-                <span className="liveDot" />{" "}
-                {availabilityLoaded
-                  ? hours.closed ? hours.reason : `${Math.max(0, 22 - occupied.size)} desks available today · ${hours.start}–${hours.end}`
-                  : "Loading today’s availability…"}
-                <button className="textButton" onClick={() => book("desk")}>
-                  Find your spot <ArrowRight size={14} />
-                </button>
+            )}
+            {offers[0] && (
+              <button className="memberOffer" onClick={() => nav("offers")}>
+                <Gift size={18} />
+                <b>{offers[0].title}</b>
+                <span>
+                  View your offers <ArrowRight size={16} />
+                </span>
+              </button>
+            )}
+          </section>
+          {!online && (
+            <section className="offlineAccess" aria-label="Available offline">
+              <div className="offlineAccessCopy">
+                <span className="eyebrow">AVAILABLE OFFLINE</span>
+                <h2>Your essentials still work.</h2>
+                <p>
+                  Open saved bookings and QR passes, check the Wi-Fi details, or
+                  call the Coworx team.
+                </p>
               </div>
-            </div>
-            <button
-              className="nextPassCard"
-              onClick={() => nav(next ? "bookings" : "book")}
-            >
-              <span className="eyebrow">
-                {next ? "YOUR NEXT BOOKING" : "YOUR NEXT GREAT WORKDAY"}
-              </span>
-              <h3>{next ? next.label : "Your workspace is waiting."}</h3>
-              <p>
-                {next
-                  ? `${upcomingDate(next)} · ${sessionHours(next,upcomingDate(next)).start}–${sessionHours(next,upcomingDate(next)).end}${next.passDays ? ` · Pass ends ${next.endDate}` : ""}`
-                  : "Choose a desk, meet your team, or record your next idea."}
-              </p>
-              <span>
-                {next ? "View booking & pass" : "Explore workspaces"}{" "}
-                <ArrowRight size={17} />
-              </span>
-            </button>
-          </div>
-          {reminders.length>0&&<div className="memberReminders">{reminders.slice(0,4).map((text,i)=><button className="noticeBox" key={i} onClick={()=>nav("bookings")}>{text} <ArrowRight size={17}/></button>)}</div>}
-          {offers[0] && (
-            <button className="memberOffer" onClick={() => nav("offers")}>
-              <Gift size={18} />
-              <b>{offers[0].title}</b>
-              <span>
-                View your offers <ArrowRight size={16} />
-              </span>
-            </button>
+              <div className="offlineAccessActions">
+                <button className="primary" onClick={() => nav("bookings")}>
+                  <QrCode size={19} /> Bookings &amp; QR passes
+                </button>
+                {wifi?.ssid && (
+                  <div className="offlineWifi">
+                    <Wifi size={19} />
+                    <span>
+                      <small>WI-FI</small>
+                      <b>{wifi.ssid}</b>
+                      <code>{wifi.password || "Ask reception"}</code>
+                    </span>
+                  </div>
+                )}
+                <a
+                  className="ghost"
+                  href={`tel:${company?.phone || "+917517517732"}`}
+                >
+                  <Phone size={19} /> Call Coworx
+                </a>
+              </div>
+            </section>
           )}
-        </section>
+        </>
       ) : (
         <section className="homeHero">
           <div className="homeHeroCopy">

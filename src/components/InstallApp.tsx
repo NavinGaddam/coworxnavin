@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, Share, X } from "lucide-react";
+import { Share, X } from "lucide-react";
 export default function InstallApp() {
   const [prompt, setPrompt] = useState<any>(null),
     [ios, setIos] = useState(false),
@@ -47,7 +47,7 @@ export default function InstallApp() {
         <X size={17} />
       </button>
       <span className="installSymbol">
-        <Download size={23} />
+        <img src="/icons/coworx-cw-192.png" alt="" />
       </span>
       <h3>Coworx, one tap away.</h3>
       <p>Book faster. Keep your bookings and digital pass close.</p>
