@@ -5,12 +5,13 @@ export const normalizeEmail = (value: unknown) =>
     .toLowerCase();
 export const validEmail = (value: unknown) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
-export const normalizePhone = (value: unknown) =>
-  String(value ?? "")
-    .trim()
-    .replace(/[\s()-]/g, "");
+export const normalizePhone = (value: unknown) => {
+  let digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.startsWith("91") && digits.length === 12) digits = digits.slice(2);
+  return digits;
+};
 export const validPhone = (value: unknown) =>
-  /^\+?\d{10,15}$/.test(normalizePhone(value));
+  /^[6-9]\d{9}$/.test(normalizePhone(value));
 export const emptyCustomer = () => ({
   name: "",
   email: "",
@@ -31,7 +32,7 @@ export function validateCustomer(draft: CustomerDraft, today: string) {
   if (!value.name) throw Error("Enter the customer's full name.");
   if (!validEmail(value.email)) throw Error("Enter a valid customer email.");
   if (!validPhone(value.phone))
-    throw Error("Enter a mobile number with 10–15 digits.");
+    throw Error("Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9.");
   if (
     !/^\d{4}-\d{2}-\d{2}$/.test(value.dob) ||
     Number.isNaN(new Date(value.dob + "T00:00:00Z").getTime()) ||
