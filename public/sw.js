@@ -1,5 +1,5 @@
 /* The build replaces __COWORX_ASSETS__ with the application's local static files. */
-const CACHE = "coworx-platform-v1";
+const CACHE = "coworx-platform-v2";
 const SHELL = self.__COWORX_ASSETS__ || [
   "/",
   "/index.html",
