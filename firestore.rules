@@ -30,6 +30,7 @@ service cloud.firestore {
       return id in ['pricing','deskPricing'] && can('pricingManage') ||
         id == 'deskFeatures' && can('resourcesManage') ||
         id == 'servicePricing' && can('paymentsManage') ||
+        id == 'homeContent' && can('noticesManage') ||
         id == 'company' && can('companyManage') ||
         id == 'upi' && can('paymentsManage') ||
         id == 'wifi' && can('wifiManage') ||
@@ -63,7 +64,7 @@ service cloud.firestore {
     }
 
     match /settings/{id} {
-      allow read: if id in ['pricing','policy'] || signedIn() && id in ['deskPricing','deskFeatures','servicePricing','upi','policy','operations','notificationTemplates','permissions','shifts','admins','company','wifi'];
+      allow read: if id in ['pricing','policy'] || signedIn() && id in ['deskPricing','deskFeatures','servicePricing','homeContent','upi','policy','operations','notificationTemplates','permissions','shifts','admins','company','wifi'];
       allow create: if managedSetting(id) || id == 'policy' && can('resourcesManage') && request.resource.data.keys().hasOnly(['calendar']);
       allow update: if managedSetting(id) || id == 'policy' && can('resourcesManage') && changedOnly(['calendar']);
     }
@@ -107,7 +108,7 @@ service cloud.firestore {
 
     function validCheckIn() {
       let b=resource.data; let n=request.resource.data; let h=session(b,today());
-      return changedOnly(['attendanceDate','checkedInAt','checkedInBy','checkedOutAt','checkedOutBy']) && can('checkIn') && bookingToday(b) && entryPaid(b) && clockMinutes() >= timeMinutes(h.start) && clockMinutes() < timeMinutes(h.end) && (b.get('attendanceDate','') != today() || b.get('checkedInAt',null) == null || b.get('checkedOutAt',null) != null) && n.attendanceDate == today() && n.checkedInAt == request.time && n.checkedInBy == request.auth.uid && n.checkedOutAt == null && n.checkedOutBy == null;
+      return changedOnly(['attendanceDate','checkedInAt','checkedInBy','checkedOutAt','checkedOutBy']) && can('checkIn') && bookingToday(b) && openDay(today()) && entryPaid(b) && clockMinutes() >= timeMinutes(h.start) && clockMinutes() < timeMinutes(h.end) && (b.get('attendanceDate','') != today() || b.get('checkedInAt',null) == null || b.get('checkedOutAt',null) != null) && n.attendanceDate == today() && n.checkedInAt == request.time && n.checkedInBy == request.auth.uid && n.checkedOutAt == null && n.checkedOutBy == null;
     }
     function validCheckOut() {
       let b=resource.data;let n=request.resource.data;

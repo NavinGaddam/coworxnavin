@@ -2,6 +2,7 @@ import Dialog from "../components/Dialog";
 import CustomerPicker from "../components/CustomerPicker";
 import DeskRates from "../components/DeskRates";
 import EnquiryCRM from "../components/EnquiryCRM";
+import { HomepageContentEditor } from "../components/HomepagePossibilities";
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
@@ -1309,6 +1310,8 @@ export default function OperationsSuite({
         </section>
       )}
       {tab === "banners" && can("noticesManage") && (
+        <>
+          <HomepageContentEditor onFlash={onFlash} />
         <section className="opsPanel">
           <div className="panelHead">
             <div>
@@ -1491,6 +1494,7 @@ export default function OperationsSuite({
             </button>
           </div>
         </section>
+        </>
       )}
       {tab === "enquiries" && can("enquiriesManage") && (
         <EnquiryCRM actorUid={uid} onFlash={onFlash} />
