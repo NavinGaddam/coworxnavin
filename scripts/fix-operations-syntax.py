@@ -12,4 +12,4 @@ if old2 not in s:
     raise SystemExit('closing banners block target not found')
 s=s.replace(old2,new2,1)
 p.write_text(s)
-# one-time repair trigger
+# one-time repair script retained temporarily for audit; main source is already repaired.
