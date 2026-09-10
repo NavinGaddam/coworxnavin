@@ -590,9 +590,10 @@ export default function Booking(p: any) {
         const paymentLine=p.upi?.upiId?` Please share payment instructions for UPI ${p.upi.upiId}.`:" Please share payment instructions.";
         const text = `Hello Coworx Central, please complete booking ${created.id.slice(0,8).toUpperCase()} for ${isDesk ? `${selected.length} desk(s) — ${selected.join(", ")}` : getTitle(p.space)} from ${p.date} to ${endDate}${isDesk ? "" : ` · ${start}–${end}`}. ${deskText} Amount due: ₹${total}. Mobile: ${phone}.${paymentLine}`;
         const url = `https://wa.me/919970836509?text=${encodeURIComponent(text)}`;
-        // Show a direct user-clicked WhatsApp link after the booking is saved.
-        // Opening a blank window before async Firestore work caused blank tabs on some browsers.
+        // Keep a visible fallback link, but navigate this same tab directly to WhatsApp.
+        // Same-tab navigation avoids popup blockers and blank tabs after async Firestore work.
         setWhatsAppUrl(url);
+        if (typeof window !== "undefined") window.location.assign(url);
       }
       setModal(false);
       setMessage(
