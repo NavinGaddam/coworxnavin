@@ -5,7 +5,7 @@ export const PERMISSIONS = [
   ["bookingsCreate", "Bookings", "Book for a customer"],
   ["paymentsCollect", "Finance", "Collect payments and confirm paid bookings"],
   ["collectionsView", "Finance", "View collections and close shifts"],
-  ["paymentsCorrect", "Finance", "Reverse incorrect payment entries"],
+  ["paymentsCorrect", "Finance", "Correct a wrongly recorded payment method (admin only)"],
   ["passesView", "Bookings", "View consecutive passes"],
   ["passesReschedule", "Bookings", "Reschedule within the pass allowance"],
   ["passExceptions", "Administration", "Grant extra pass reschedules (admin only)"],
@@ -23,7 +23,7 @@ export const PERMISSIONS = [
   ["refundsManage", "Finance", "Record refunds"],
   ["pricingManage", "Workspace", "Manage rates and seasonal pricing"],
   ["catalogManage", "Workspace", "Manage offers, memberships and add-ons"],
-  ["resourcesManage", "Workspace", "Manage maintenance and holidays"],
+  ["resourcesManage", "Workspace", "Manage maintenance, lockers and holidays"],
   ["noticesManage", "Workspace", "Publish homepage notices"],
   ["communicationsManage", "Workspace", "Manage message templates"],
   ["companyManage", "Administration", "Edit company and GST details"],
@@ -78,8 +78,6 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
   ]),
   User: set([]),
 };
-// Legacy switches were stored but never enforced. Only explicitly named capabilities
-// are read; owner accounts keep recovery access independently of this document.
 export function permissionMatrix(raw: any): PermissionMatrix {
   return Object.fromEntries(
     Object.entries(DEFAULT_PERMISSIONS).map(([role, defaults]) => [
@@ -103,7 +101,8 @@ export function canAccess(
   matrix: PermissionMatrix,
   owner = false,
 ) {
-  return (key !== "passExceptions" || role === "Admin") && (owner || (role !== "User" && Boolean(matrix[role]?.[key])));
+  const adminOnly = key === "passExceptions" || key === "paymentsCorrect";
+  return (!adminOnly || role === "Admin") && (owner || (role !== "User" && Boolean(matrix[role]?.[key])));
 }
 export const STAFF_ROLES: Role[] = ["Admin", "Manager", "Receptionist"];
 
@@ -128,6 +127,8 @@ export function changePermission(
   key: Permission,
   enabled: boolean,
 ): PermissionMatrix {
+  if ((key === "paymentsCorrect" || key === "passExceptions") && role !== "Admin")
+    return matrix;
   const next = { ...matrix, [role]: { ...matrix[role] } };
   const change = (p: Permission, value: boolean) => {
     next[role][p] = value;
