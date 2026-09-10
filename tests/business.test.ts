@@ -3,7 +3,7 @@ import { DEFAULT_POLICY, PASS_ALLOWANCES, bookingOn, cancellationQuote, consecut
 import { attendanceError } from "../src/lib/booking-pass";
 
 describe("consecutive office passes",()=>{
-  it("counts 10/20/30 open working days, skips Sundays and declared holidays",()=>{
+  it("counts 10/20/30 open working days, skips default Sundays and declared holidays",()=>{
     for(const count of [10,20,30]) {
       const dates=consecutiveDates("2026-09-12",count,DEFAULT_POLICY,[{date:"2026-09-14",active:true}]);
       expect(dates).toHaveLength(count);
@@ -13,7 +13,7 @@ describe("consecutive office passes",()=>{
     }
     expect(PASS_ALLOWANCES).toEqual({10:1,20:2,30:3});
   });
-  it("honours seasonal dates and one-day exceptions, with Sunday always closed",()=>{
+  it("honours seasonal dates and one-day exceptions, with Sunday closed by default",()=>{
     const p={...DEFAULT_POLICY,seasons:[{from:"2026-11-01",to:"2027-02-28",start:"10:30",end:"18:45"}],exceptions:[{date:"2026-11-02",start:"11:15",end:"16:20"}]};
     expect(officeHours("2026-10-31",p).start).toBe("09:00");
     expect(officeHours("2026-11-03",p).start).toBe("10:30");
@@ -33,10 +33,10 @@ describe("consecutive office passes",()=>{
 });
 describe("advance payments and daily sessions",()=>{
   const b={status:"Confirmed",date:"2026-09-09",endDate:"2026-09-09",dates:["2026-09-09"],total:1000,paymentReceived:1000,sessions:{"2026-09-09":{start:"08:15",end:"18:45"}}};
-  it("blocks unpaid regular bookings and overdue pass balances",()=>{
+  it("requires full advance for regular bookings and passes",()=>{
     expect(paymentAccessError({...b,paymentReceived:500})).toContain("Full advance");
-    expect(paymentAccessError({...b,passDays:10,minimumAdvance:500,paymentReceived:500,balanceDueDate:"2026-09-10"},"2026-09-10")).toBe("");
-    expect(paymentAccessError({...b,passDays:10,minimumAdvance:500,paymentReceived:500,balanceDueDate:"2026-09-10"},"2026-09-11")).toContain("overdue");
+    expect(paymentAccessError({...b,passDays:10,minimumAdvance:500,paymentReceived:500,balanceDueDate:"2026-09-10"},"2026-09-10")).toContain("Full advance");
+    expect(paymentAccessError({...b,passDays:10,minimumAdvance:500,paymentReceived:1000,balanceDueDate:"2026-09-10"},"2026-09-11")).toBe("");
   });
   it("permits same-day re-entry but not early or after-close admission",()=>{
     const left={...b,attendanceDate:b.date,checkedInAt:1,checkedOutAt:2};
