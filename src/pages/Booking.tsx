@@ -409,15 +409,6 @@ export default function Booking(p: any) {
   const valid = isDesk
     ? selected.length > 0
     : !startBusy && roomAvailable > 0 && duration <= roomAvailable;
-  const profileProfession = profile.profession === "Other"
-    ? String(profile.otherProfession || "").trim()
-    : String(profile.profession || "").trim();
-  const userDetailsReady = p.staffBooking || Boolean(
-    validPhone(profile.mobile) &&
-    String(profile.gender || "").trim() &&
-    validDobValue(profile.dob) &&
-    profileProfession
-  );
   const openModal = () => {
     if (inventoryLoading || loadError)
       return setMessage(loadError || "Availability is still loading.");
@@ -442,12 +433,6 @@ export default function Booking(p: any) {
           : `Only ${roomAvailable} continuous hour${roomAvailable === 1 ? "" : "s"} is available from ${start}.`,
       );
     setMessage("");
-    const savedMobile = String(
-      p.myProfile?.mobile || p.phoneNumber || profile.mobile || "",
-    ).trim();
-    const savedProfession = String(
-      p.myProfile?.profession || profile.profession || "",
-    ).trim();
     if (p.staffBooking) {
       if (!selectedCustomer?.uid)
         return setMessage(
@@ -466,10 +451,16 @@ export default function Booking(p: any) {
       void submit();
       return;
     }
-    if (!userDetailsReady) {
-      return setMessage("Complete all customer details before requesting on WhatsApp: mobile, gender, date of birth and profession.");
-    }
-    void submit();
+    // Always collect/confirm every required customer detail before the final WhatsApp action.
+    // This keeps workspace selection available while preventing incomplete customer bookings.
+    setProfile((x) => ({
+      ...x,
+      mobile: p.myProfile?.mobile || p.phoneNumber || x.mobile || "",
+      gender: p.myProfile?.gender || x.gender || "",
+      dob: p.myProfile?.dob || x.dob || "",
+      profession: p.myProfile?.profession || x.profession || "",
+    }));
+    setModal(true);
   };
   const submit = async (overrideProfile?: any) => {
     if (submitLock.current) return;
@@ -596,11 +587,11 @@ export default function Booking(p: any) {
         const deskText = isDesk ? `Desk number(s): ${selected.join(", ")}` : "";
         const paymentLine=p.upi?.upiId?` Please share payment instructions for UPI ${p.upi.upiId}.`:" Please share payment instructions.";
         const text = `Hello Coworx Central, please complete booking ${created.id.slice(0,8).toUpperCase()} for ${isDesk ? `${selected.length} desk(s) — ${selected.join(", ")}` : getTitle(p.space)} from ${p.date} to ${endDate}${isDesk ? "" : ` · ${start}–${end}`}. ${deskText} Amount due: ₹${total}. Mobile: ${phone}.${paymentLine}`;
-        const url = `https://wa.me/919970836509?text=${encodeURIComponent(text)}`;
+        const url = `https://api.whatsapp.com/send?phone=919970836509&text=${encodeURIComponent(text)}`;
         // Keep a visible fallback link, but navigate this same tab directly to WhatsApp.
         // Same-tab navigation avoids popup blockers and blank tabs after async Firestore work.
         setWhatsAppUrl(url);
-        if (typeof window !== "undefined") window.location.assign(url);
+        if (typeof window !== "undefined") window.location.href = url;
       }
       setModal(false);
       setMessage(
@@ -806,14 +797,6 @@ export default function Booking(p: any) {
               locks={locks}
             />
           )}
-          {!p.staffBooking && (
-            <CustomerDetailsPanel
-              user={p.user}
-              profile={profile}
-              setProfile={setProfile}
-              ready={userDetailsReady}
-            />
-          )}
           <Extras
             qty={addonQty}
             setQty={setAddonQty}
@@ -844,9 +827,8 @@ export default function Booking(p: any) {
           canConfirm={p.canConfirm}
           busy={submitting || inventoryLoading}
           customerReady={
-            p.staffBooking
-              ? Boolean(selectedCustomer?.uid && !selectedCustomer.blocked)
-              : userDetailsReady
+            !p.staffBooking ||
+            Boolean(selectedCustomer?.uid && !selectedCustomer.blocked)
           }
           title={getTitle(p.space)}
           date={p.date}
@@ -1183,84 +1165,6 @@ function setDuration(p: any, v: number) {
   else if (p.space === "conference") p.setConfDuration(v);
   else p.setPodDuration(v);
 }
-function CustomerDetailsPanel({ user, profile, setProfile, ready }: any) {
-  const professions = [
-    "IT Professional",
-    "Developer",
-    "Tester",
-    "Marketing Team",
-    "Student",
-    "Designer",
-    "Consultant",
-    "Business",
-    "Other",
-  ];
-  return (
-    <section className="bookingExtras panel customerDetailsPanel">
-      <div className="extrasHead">
-        <div>
-          <span className="eyebrow">CUSTOMER DETAILS · REQUIRED</span>
-          <h3>Complete your details before WhatsApp</h3>
-          <small>All fields below are compulsory. Request on WhatsApp is enabled only after they are valid.</small>
-        </div>
-        {ready ? <CheckCircle2 /> : <UserPlus />}
-      </div>
-      <div className="fieldGrid">
-        <label>Name<input value={user?.displayName || ""} readOnly /></label>
-        <label>Email<input value={user?.email || ""} readOnly /></label>
-        <label>
-          Mobile number *
-          <input
-            type="tel"
-            inputMode="numeric"
-            autoComplete="tel"
-            maxLength={10}
-            placeholder="9876543210"
-            value={normalizePhone(profile.mobile || "")}
-            onChange={(e) => setProfile({ ...profile, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) })}
-          />
-          <small>10 digits, starting with 6, 7, 8 or 9.</small>
-        </label>
-        <label>
-          Gender *
-          <select value={profile.gender || ""} onChange={(e) => setProfile({ ...profile, gender: e.target.value })}>
-            <option value="">Select gender</option>
-            <option>Male</option>
-            <option>Female</option>
-            <option>Other</option>
-            <option>Prefer not to say</option>
-          </select>
-        </label>
-        <div className="customerDateField">
-          <DatePicker
-            label="Date of birth *"
-            value={profile.dob || ""}
-            min="1900-01-01"
-            max={localToday()}
-            placeholder="Choose date of birth"
-            onChange={(dob) => setProfile({ ...profile, dob })}
-          />
-        </div>
-        <label>
-          Profession *
-          <select value={profile.profession || ""} onChange={(e) => setProfile({ ...profile, profession: e.target.value, otherProfession: e.target.value === "Other" ? profile.otherProfession : "" })}>
-            <option value="">Select profession</option>
-            {professions.map((x) => <option key={x}>{x}</option>)}
-          </select>
-        </label>
-        {profile.profession === "Other" && (
-          <label className="full">
-            Profession details *
-            <input value={profile.otherProfession || ""} onChange={(e) => setProfile({ ...profile, otherProfession: e.target.value })} placeholder="e.g. Architect, HR, Photographer" />
-          </label>
-        )}
-      </div>
-      <p className={ready ? "goodText" : "noticeBox"}>
-        {ready ? "All required customer details are complete. You can now request on WhatsApp." : "Complete every required field to enable Request on WhatsApp."}
-      </p>
-    </section>
-  );
-}
 function Extras({
   qty,
   setQty,
@@ -1496,9 +1400,7 @@ function Summary({
         <span>
           {staffBooking
             ? "Save the customer, then collect payment before confirming the booking."
-            : customerReady
-              ? "Customer details verified. Online requests reserve the selected resource for 15 minutes while payment is completed."
-              : "Complete all required customer details before requesting on WhatsApp."}
+            : "Online requests reserve the selected resource for 15 minutes while payment is completed."}
         </span>
       </div>
       {staffBooking&&<div className={`summaryPaymentState ${paymentReady?"ready":""}`}><span>{paymentReady?"Payment verified":"Payment required"}</span><strong>₹{Number(payingNow||0).toLocaleString("en-IN")}</strong></div>}
@@ -1516,13 +1418,9 @@ function Summary({
             <CheckCircle2 />{" "}
             {canConfirm ? "Receive payment & confirm" : "Payment permission required"}
           </>
-        ) : !customerReady ? (
-          <>
-            <UserPlus /> Complete customer details first
-          </>
         ) : (
           <>
-            <MessageCircle /> Request on WhatsApp
+            <UserPlus /> Continue to customer details
           </>
         )}
       </button>
@@ -1570,6 +1468,15 @@ function ProfileModal({
     "Business",
     "Other",
   ];
+  const professionValue = profile.profession === "Other"
+    ? String(profile.otherProfession || "").trim()
+    : String(profile.profession || "").trim();
+  const detailsReady = Boolean(
+    validPhone(profile.mobile) &&
+    String(profile.gender || "").trim() &&
+    validDobValue(profile.dob) &&
+    professionValue
+  );
   return (
     <div className="modalBackdrop">
       <div className="profileModal modernProfileModal">
@@ -1578,8 +1485,8 @@ function ProfileModal({
             <span className="eyebrow">FINAL CHECK</span>
             <h3>Customer details</h3>
             <p>
-              Google name is used automatically. Add your contact and
-              professional details before submitting.
+              Google name and email are used automatically. Complete every
+              required detail below before requesting on WhatsApp.
             </p>
           </div>
           <button className="ghost small" onClick={onClose}>
@@ -1612,7 +1519,7 @@ function ProfileModal({
             <small>Used for booking contact and WhatsApp.</small>
           </label>
           <label>
-            <span>Gender</span>
+            <span>Gender <em>*</em></span>
             <select
               value={profile.gender || ""}
               onChange={(e) =>
@@ -1627,10 +1534,10 @@ function ProfileModal({
             </select>
           </label>
           <div className="customerDateField">
-            <DatePicker label="Date of birth" value={profile.dob||""} min="1900-01-01" max={localToday()} placeholder="Choose date of birth" onChange={dob=>setProfile({...profile,dob})}/>
+            <DatePicker label="Date of birth *" value={profile.dob||""} min="1900-01-01" max={localToday()} placeholder="Choose date of birth" onChange={dob=>setProfile({...profile,dob})}/>
           </div>
           <label>
-            <span>Profession</span>
+            <span>Profession <em>*</em></span>
             <select
               value={profile.profession || ""}
               onChange={(e) =>
@@ -1665,10 +1572,10 @@ function ProfileModal({
           </small>
           <button
             className="primary modernContinue"
-            disabled={busy}
+            disabled={busy || !detailsReady}
             onClick={onContinue}
           >
-            {busy ? "Creating booking…" : "Continue to WhatsApp"}{" "}
+            {busy ? "Creating booking…" : detailsReady ? "Request on WhatsApp" : "Complete all required details"}{" "}
             <MessageCircle size={17} />
           </button>
         </div>
