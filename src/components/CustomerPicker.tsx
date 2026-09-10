@@ -11,6 +11,24 @@ import { localToday } from "../pages/types";
 import { DatePicker } from "../pages/DatePicker";
 import UserAvatar from "./UserAvatar";
 
+const PROFESSIONS = [
+  "Student",
+  "Business Owner",
+  "Entrepreneur",
+  "Freelancer",
+  "Developer / IT",
+  "Designer / Creative",
+  "Marketing / Sales",
+  "Finance / Accounting",
+  "Consultant",
+  "Lawyer",
+  "Doctor / Healthcare",
+  "Engineer",
+  "Teacher / Education",
+  "Government Employee",
+  "Other",
+];
+
 export default function CustomerPicker({
   users = [],
   selected,
@@ -22,7 +40,7 @@ export default function CustomerPicker({
   const [query, setQuery] = useState(""),
     [open, setOpen] = useState(false),
     [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState(emptyCustomer),
+  const [draft, setDraft] = useState<any>(() => ({ ...emptyCustomer(), otherProfession: "" })),
     [saving, setSaving] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -41,6 +59,7 @@ export default function CustomerPicker({
   const start = () => {
     setDraft({
       ...emptyCustomer(),
+      otherProfession: "",
       email: validEmail(query) ? query : "",
       name: !query.includes("@") && !/\d/.test(query) ? query : "",
     });
@@ -55,7 +74,14 @@ export default function CustomerPicker({
     if (saveLock.current) return;
     try {
       setError("");
-      const value = validateCustomer(draft, localToday());
+      const prepared = {
+        ...draft,
+        profession:
+          draft.profession === "Other"
+            ? String(draft.otherProfession || "").trim()
+            : draft.profession,
+      };
+      const value = validateCustomer(prepared, localToday());
       saveLock.current = true;
       setSaving(true);
       const customer: any = await createCustomerProfile(
@@ -76,8 +102,8 @@ export default function CustomerPicker({
       setSaving(false);
     }
   };
-  const field = (key: keyof typeof draft, value: string) =>
-    setDraft((d) => ({ ...d, [key]: value }));
+  const field = (key: string, value: string) =>
+    setDraft((d: any) => ({ ...d, [key]: value }));
   return (
     <section
       className="customerPicker surface"
@@ -223,9 +249,12 @@ export default function CustomerPicker({
                 <input
                   name="phone"
                   type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
                   value={draft.phone}
-                  onChange={(e) => field("phone", e.target.value)}
+                  onChange={(e) => field("phone", e.target.value.replace(/\D/g, "").slice(0, 10))}
                   autoComplete="tel"
+                  placeholder="10 digits · starts with 6/7/8/9"
                   required
                 />
               </label>
@@ -242,14 +271,29 @@ export default function CustomerPicker({
               </div>
               <label>
                 Profession *
-                <input
+                <select
                   name="profession"
                   value={draft.profession}
                   onChange={(e) => field("profession", e.target.value)}
-                  placeholder="e.g. Student, Developer, Business owner"
                   required
-                />
+                >
+                  <option value="">Choose profession</option>
+                  {PROFESSIONS.map((profession) => (
+                    <option value={profession} key={profession}>{profession}</option>
+                  ))}
+                </select>
               </label>
+              {draft.profession === "Other" && (
+                <label>
+                  Profession details *
+                  <input
+                    value={draft.otherProfession || ""}
+                    onChange={(e) => field("otherProfession", e.target.value)}
+                    placeholder="Enter profession"
+                    required
+                  />
+                </label>
+              )}
               <label>
                 Gender
                 <select

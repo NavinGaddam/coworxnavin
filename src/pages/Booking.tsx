@@ -397,9 +397,9 @@ export default function Booking(p: any) {
   const amenities=drink?[drink]:[];
   const addonTotal = selectedAddons.reduce((n, a) => n + a.total, 0);
   const total = Math.max(0, baseTotal - discount + addonTotal);
-  const minimumDue=selectedPlan?Math.ceil(total*Number(selectedPlan.minimumAdvancePercent||policy.minimumAdvancePercent||50))/100:total;
+  const minimumDue=total;
   const payingNow=Math.round((Number(tender.cash||0)+Number(tender.upi||0)+Number(tender.other||0))*100)/100;
-  const paymentReady=!p.staffBooking||Boolean(p.canConfirm&&paymentVerified&&payingNow<=total&&(selectedPlan?payingNow>=minimumDue:payingNow===total)&&(!tender.upi||tender.reference.trim()));
+  const paymentReady=!p.staffBooking||Boolean(p.canConfirm&&paymentVerified&&payingNow===total&&(!tender.upi||tender.reference.trim()));
   const valid = isDesk
     ? selected.length > 0
     : !startBusy && roomAvailable > 0 && duration <= roomAvailable;
@@ -446,7 +446,7 @@ export default function Booking(p: any) {
         return setMessage(error.message);
       }
       if (!paymentReady)
-        return setMessage(selectedPlan?`Verify at least ₹${minimumDue.toLocaleString("en-IN")} received before creating this pass.`:`Verify the full ₹${total.toLocaleString("en-IN")} advance payment before booking.`);
+        return setMessage(selectedPlan?`Verify the full ₹${total.toLocaleString("en-IN")} advance payment before creating this pass.`:`Verify the full ₹${total.toLocaleString("en-IN")} advance payment before booking.`);
       setModal(false);
       void submit();
       return;
@@ -501,10 +501,6 @@ export default function Booking(p: any) {
     setSubmitting(true);
     setMessage("");
     setWhatsAppUrl("");
-    const waWindow = !p.staffBooking
-      ? window.open("about:blank", "_blank")
-      : null;
-    if (waWindow) waWindow.opener = null;
     try {
       let name = p.staffBooking
         ? selectedCustomer.name
@@ -594,8 +590,9 @@ export default function Booking(p: any) {
         const paymentLine=p.upi?.upiId?` Please share payment instructions for UPI ${p.upi.upiId}.`:" Please share payment instructions.";
         const text = `Hello Coworx Central, please complete booking ${created.id.slice(0,8).toUpperCase()} for ${isDesk ? `${selected.length} desk(s) — ${selected.join(", ")}` : getTitle(p.space)} from ${p.date} to ${endDate}${isDesk ? "" : ` · ${start}–${end}`}. ${deskText} Amount due: ₹${total}. Mobile: ${phone}.${paymentLine}`;
         const url = `https://wa.me/919970836509?text=${encodeURIComponent(text)}`;
+        // Show a direct user-clicked WhatsApp link after the booking is saved.
+        // Opening a blank window before async Firestore work caused blank tabs on some browsers.
         setWhatsAppUrl(url);
-        if (waWindow) waWindow.location.href = url;
       }
       setModal(false);
       setMessage(
@@ -607,7 +604,6 @@ export default function Booking(p: any) {
       );
       if (!p.staffBooking || !p.canConfirm) {p.setSelectedSeats([]);p.onBooked?.();}
     } catch (e: any) {
-      waWindow?.close();
       const conflicts: { inventoryId: string }[] = e?.conflicts || [];
       if (conflicts.length && isDesk) {
         const conflictIds = new Set(
@@ -650,7 +646,7 @@ export default function Booking(p: any) {
             {p.staffBooking ? "Book for a customer" : "Choose your workspace."}
           </h2>
           <p>
-            Office hours for {p.date}: <strong>{hours.closed?hours.reason:`${hours.start}–${hours.end}`}</strong>. Daily desks end at closing time. Sundays are holidays.
+            Office hours for {p.date}: <strong>{hours.closed?hours.reason:`${hours.start}–${hours.end}`}</strong>. Daily desks end at closing time. Sunday follows the configured weekly schedule.
           </p>
         </div>
         {p.staff && (
@@ -688,7 +684,7 @@ export default function Booking(p: any) {
       </div>
       <div className="bookingGrid">
         <section className="panel bookingPanel">
-          {isDesk&&<div className="passChooser"><label>Booking type<select value={planId} onChange={e=>{setPlanId(e.target.value);setEndDate(p.date);setCouponCode("");p.setSelectedSeats([]);setPaymentVerified(false);}}><option value="">Regular desk booking · full advance</option>{plans.filter(x=>x.active!==false&&PASS_ALLOWANCES[Number(x.deskDays||x.days)]).map(x=><option key={x.id} value={x.id}>{x.name} · {Number(x.deskDays||x.days)} working days · ₹{x.price}/desk</option>)}</select></label>{selectedPlan&&<p className="noticeBox">One desk per pass · {passDays} consecutive working days, excluding Sundays and declared holidays. {PASS_ALLOWANCES[passDays]} day reschedule allowance. Partial advance permitted; extra reschedules require admin approval.</p>}</div>}
+          {isDesk&&<div className="passChooser"><label>Booking type<select value={planId} onChange={e=>{setPlanId(e.target.value);setEndDate(p.date);setCouponCode("");p.setSelectedSeats([]);setPaymentVerified(false);}}><option value="">Regular desk booking · full advance</option>{plans.filter(x=>x.active!==false&&PASS_ALLOWANCES[Number(x.deskDays||x.days)]).map(x=><option key={x.id} value={x.id}>{x.name} · {Number(x.deskDays||x.days)} working days · ₹{x.price}/desk</option>)}</select></label>{selectedPlan&&<p className="noticeBox">One desk per pass · {passDays} consecutive working days, excluding Sundays and declared holidays. {PASS_ALLOWANCES[passDays]} day reschedule allowance. Full advance payment is required; extra reschedules require admin approval.</p>}</div>}
           {passDays?<div className="fieldGrid"><div className="customerDateField"><DatePicker label="Pass starts" min={localToday()} max={maxDate} value={p.date} onChange={value=>{p.setDate(value);setPaymentVerified(false);}}/></div><div><small>Last included working day</small><strong className="passEndDate">{endDate}</strong></div></div>:<DateRangePicker
             start={p.date}
             end={endDate}
@@ -1250,15 +1246,15 @@ function Extras({
   );
 }
 function StaffPaymentPanel({total,minimumDue,passDays,tender,setTender,verified,setVerified,canCollect}:any){
-  const amount=Math.round((Number(tender.cash||0)+Number(tender.upi||0))*100)/100;
+  const amount=Math.round((Number(tender.cash||0)+Number(tender.upi||0)+Number(tender.other||0))*100)/100;
   const fill=(method:"cash"|"upi",value:number)=>setTender({...emptyTender(),[method]:value});
   return <section className="staffPaymentPanel panel">
     <div className="extrasHead"><div><span className="eyebrow">02 / PAYMENT</span><h3>Receive advance payment</h3></div><WalletCards/></div>
     {!canCollect?<p className="inlineError">Your role can create requests but cannot collect money. Ask an authorised teammate to complete this booking.</p>:<>
-      <div className="paymentDueLine"><span>{passDays?"Minimum required now":"Full advance required"}</span><strong>₹{minimumDue.toLocaleString("en-IN")}</strong><small>Booking total ₹{total.toLocaleString("en-IN")}</small></div>
-      <div className="paymentQuickButtons"><button type="button" className="ghost" onClick={()=>fill("upi",total)}>Full by UPI</button><button type="button" className="ghost" onClick={()=>fill("cash",total)}>Full by cash</button>{passDays&&minimumDue<total&&<button type="button" className="ghost" onClick={()=>fill("upi",minimumDue)}>Minimum by UPI</button>}</div>
+      <div className="paymentDueLine"><span>{"Full advance required"}</span><strong>₹{minimumDue.toLocaleString("en-IN")}</strong><small>Booking total ₹{total.toLocaleString("en-IN")}</small></div>
+      <div className="paymentQuickButtons"><button type="button" className="ghost" onClick={()=>fill("upi",total)}>Full by UPI</button><button type="button" className="ghost" onClick={()=>fill("cash",total)}>Full by cash</button></div>
       <div className="fieldGrid paymentFields"><label>Cash received ₹<input type="number" inputMode="decimal" min="0" step="0.01" value={tender.cash} onChange={e=>setTender({...tender,cash:Number(e.target.value)})}/></label><label>UPI received ₹<input type="number" inputMode="decimal" min="0" step="0.01" value={tender.upi} onChange={e=>setTender({...tender,upi:Number(e.target.value)})}/></label><label className="full">UPI transaction reference{Number(tender.upi)>0?" *":""}<input value={tender.reference} onChange={e=>setTender({...tender,reference:e.target.value})} placeholder="Verify in the merchant app, then enter reference"/></label></div>
-      <div className={`paymentReconcile ${amount>total?"bad":""}`}><span>Receiving now</span><b>₹{amount.toLocaleString("en-IN")}</b><small>{amount>total?"Amount exceeds booking total":passDays&&amount<minimumDue?`₹${(minimumDue-amount).toLocaleString("en-IN")} more required`:!passDays&&amount!==total?`Enter exactly ₹${total.toLocaleString("en-IN")}`:`Remaining after payment: ₹${Math.max(0,total-amount).toLocaleString("en-IN")}`}</small></div>
+      <div className={`paymentReconcile ${amount>total?"bad":""}`}><span>Receiving now</span><b>₹{amount.toLocaleString("en-IN")}</b><small>{amount>total?"Amount exceeds booking total":amount!==total?`Enter exactly ₹${total.toLocaleString("en-IN")}`:`Remaining after payment: ₹${Math.max(0,total-amount).toLocaleString("en-IN")}`}</small></div>
       <label className="checkLabel paymentVerify"><input type="checkbox" checked={verified} onChange={e=>setVerified(e.target.checked)}/><span>I verified the cash and/or UPI amount received. Save an immutable receipt and confirm this booking.</span></label>
     </>}
   </section>;

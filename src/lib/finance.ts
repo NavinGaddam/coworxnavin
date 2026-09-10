@@ -1,7 +1,7 @@
 import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, where, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { localToday } from "../pages/types";
-import { balance, money } from "./business";
+import { money } from "./business";
 
 export type Tender = { cash: number; upi: number; other: number; reference: string };
 export const emptyTender = (): Tender => ({cash:0,upi:0,other:0,reference:""});
@@ -9,6 +9,8 @@ export function tenderTotal(t: Tender) {
   if ([t.cash,t.upi,t.other].some(n => !Number.isFinite(Number(n)) || Number(n)<0 || Math.abs(Number(n)*100-Math.round(Number(n)*100)) > 0.00001)) throw Error("Enter positive payment amounts with no more than two decimal places.");
   return Math.round((Number(t.cash)+Number(t.upi)+Number(t.other))*100)/100;
 }
+const paymentMethod = (t:Tender) => [t.cash>0&&"Cash",t.upi>0&&"UPI",t.other>0&&"Other"].filter(Boolean).join(" + ") || "No charge";
+
 export async function collectPayment(id: string, tender: Tender, discount = 0, expectedReceived?: number) {
   if (typeof navigator !== "undefined" && navigator.onLine === false) throw Error("Reconnect before recording a payment.");
   const uid = auth.currentUser?.uid;
@@ -26,8 +28,7 @@ export async function collectPayment(id: string, tender: Tender, discount = 0, e
     if (b.status === "Confirmed" && discount !== Number(b.staffDiscount || 0)) throw Error("Discounts must be agreed before the first payment.");
     const total = Math.round((Number(b.total) + Number(b.staffDiscount || 0) - discount)*100)/100, received = Math.round((old + amount)*100)/100;
     if (total < 0 || received > total || (amount <= 0 && total > 0)) throw Error("Payment must be greater than zero and no more than the balance.");
-    if (!b.passDays && received !== total) throw Error("Regular bookings require full advance payment.");
-    if (b.passDays && received < Math.min(total,Number(b.minimumAdvance))) throw Error(`Collect at least ${money(Math.min(total,Number(b.minimumAdvance))-old)} to activate this pass.`);
+    if (received !== total) throw Error(`Full advance payment is required. Collect ${money(total-old)} to confirm this booking.`);
     const couponRef=b.status==="Pending"&&b.couponId?doc(db,"coupons",b.couponId):null;
     const redemptionRef=couponRef?doc(db,"couponRedemptions",`${b.couponId}_${b.userId}`):null;
     const couponSnapshot=couponRef?await tx.get(couponRef):null;
@@ -44,7 +45,7 @@ export async function collectPayment(id: string, tender: Tender, discount = 0, e
     const receiptNumber = `RC-${localToday().replaceAll("-","")}-${receipt.id.slice(0,8).toUpperCase()}`;
     tx.set(receipt,{bookingId:id,userId:b.userId,customerEmail:b.customerEmail,customerName:b.customerName || b.customerEmail,kind:"Collection",amount,cashAmount:Number(tender.cash),upiAmount:Number(tender.upi),otherAmount:Number(tender.other),reference:tender.reference.trim(),provider:"manual",channel:b.checkoutChannel||"staff_manual",actorUid:uid,date:localToday(),createdAt:serverTimestamp(),receiptNumber});
     if(redemptionRef)tx.set(redemptionRef,{couponId:b.couponId,couponCode:b.couponCode,userId:b.userId,customerEmail:b.customerEmail,count:Number(redemptionSnapshot?.data()?.count||0)+1,lastBookingId:id,updatedAt:serverTimestamp(),...(redemptionSnapshot?.exists()?{}:{createdAt:serverTimestamp()})},{merge:true});
-    tx.update(ref,{status:"Confirmed",expiresAt:null,total,staffDiscount:discount,paymentReceived:received,paymentStatus:received === total ? "Paid" : "Partially Paid",paymentMethod:[tender.cash>0&&"Cash",tender.upi>0&&"UPI",tender.other>0&&"Other"].filter(Boolean).join(" + ") || "No charge",paymentRef:tender.reference.trim(),lastPaymentId:receipt.id,confirmedBy:uid,confirmedAt:serverTimestamp(),invoiceNumber:b.invoiceNumber || `${company.data()?.invoicePrefix || "CC"}-${localToday().slice(0,4)}-${id.slice(0,8).toUpperCase()}`});
+    tx.update(ref,{status:"Confirmed",expiresAt:null,total,staffDiscount:discount,paymentReceived:received,paymentStatus:"Paid",paymentMethod:paymentMethod(tender),paymentRef:tender.reference.trim(),lastPaymentId:receipt.id,confirmedBy:uid,confirmedAt:serverTimestamp(),invoiceNumber:b.invoiceNumber || `${company.data()?.invoicePrefix || "CC"}-${localToday().slice(0,4)}-${id.slice(0,8).toUpperCase()}`});
     lockRefs.forEach((r:any) => tx.update(r,{status:"Confirmed",expiresAt:null,updatedAt:serverTimestamp()}));
     return receiptNumber;
   });
@@ -55,6 +56,41 @@ export function watchPayments(cb:(rows:any[])=>void,onError:(e:any)=>void,custom
   const stops = queries.map((q,i) => onSnapshot(q,s => {groups[i]=s.docs.map(d=>({id:d.id,...d.data()}));cb([...new Map(groups.flat().map(r=>[r.id,r])).values()].sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0)));},onError));
   return () => stops.forEach(s=>s());
 }
+
+/**
+ * Correct only how an already-received payment was recorded. The customer's
+ * paid balance and original receipt stay unchanged; a separate audit entry
+ * moves the collection between Cash / UPI / Other reporting buckets.
+ */
+export async function correctPaymentMethod(paymentId:string,tender:Tender,reason:string) {
+  if (!reason.trim()) throw Error("Enter why the payment method is being corrected.");
+  const uid=auth.currentUser?.uid;
+  if(!uid) throw Error("Sign in first.");
+  const total=tenderTotal(tender);
+  if(tender.upi>0&&!tender.reference.trim()) throw Error("Enter the verified UPI reference.");
+  const correction=doc(collection(db,"payments"));
+  await runTransaction(db,async tx=>{
+    const originalRef=doc(db,"payments",paymentId), originalSnap=await tx.get(originalRef);
+    if(!originalSnap.exists()) throw Error("Original payment not found.");
+    const p:any=originalSnap.data();
+    if(p.kind!=="Collection") throw Error("Only an original collection can have its payment method corrected.");
+    if(total!==Number(p.amount)) throw Error(`The corrected split must still total ${money(p.amount)}.`);
+    const bookingRef=doc(db,"bookings",p.bookingId), bookingSnap=await tx.get(bookingRef);
+    if(!bookingSnap.exists()) throw Error("Booking not found.");
+    const b:any=bookingSnap.data();
+    if(b.status!=="Confirmed" || Number(b.paymentReceived||0)<Number(p.amount)) throw Error("This collection is no longer attached to an active paid booking.");
+    const already=await tx.get(doc(db,"paymentMethodCorrections",paymentId));
+    if(already.exists()) throw Error("This receipt already has a payment-method correction. Review the audit record before changing it again.");
+    const cashDelta=Math.round((Number(tender.cash)-Number(p.cashAmount||0))*100)/100;
+    const upiDelta=Math.round((Number(tender.upi)-Number(p.upiAmount||0))*100)/100;
+    const otherDelta=Math.round((Number(tender.other)-Number(p.otherAmount||0))*100)/100;
+    tx.set(correction,{bookingId:p.bookingId,userId:p.userId,customerEmail:p.customerEmail,customerName:p.customerName,kind:"Method Correction",amount:0,cashAmount:cashDelta,upiAmount:upiDelta,otherAmount:otherDelta,reference:tender.reference.trim(),provider:"manual",channel:p.channel||"staff_manual",actorUid:uid,date:localToday(),createdAt:serverTimestamp(),receiptNumber:`ADJ-${p.receiptNumber}`,originalPaymentId:paymentId,reason:reason.trim(),correctedCash:Number(tender.cash),correctedUpi:Number(tender.upi),correctedOther:Number(tender.other)});
+    tx.set(doc(db,"paymentMethodCorrections",paymentId),{paymentId,correctionId:correction.id,bookingId:p.bookingId,actorUid:uid,reason:reason.trim(),createdAt:serverTimestamp()});
+    tx.update(bookingRef,{paymentMethod:paymentMethod(tender),paymentRef:tender.reference.trim(),lastPaymentCorrectionId:correction.id});
+  });
+}
+
+/** Legacy amount reversal kept for historical records; UI no longer exposes it. */
 export async function reversePayment(paymentId:string,reason:string) {
   if (!reason.trim()) throw Error("Enter the reason for this correction.");
   const uid = auth.currentUser?.uid;
@@ -84,7 +120,11 @@ export async function processRefund(id:string,amount:number,reference:string,met
     tx.update(ref,{refundStatus:"Processed",refundAmount:amount,refundReference:reference.trim(),refundProcessedBy:uid,refundProcessedAt:serverTimestamp(),paymentStatus:"Refunded",lastPaymentId:receipt.id});
   });
 }
-export const collectionTotals = (rows:any[]) => rows.reduce((t,p)=>{const sign=p.kind==="Collection"?1:-1;return {cash:t.cash+sign*p.cashAmount,upi:t.upi+sign*p.upiAmount,other:t.other+sign*p.otherAmount,net:t.net+sign*p.amount};},{cash:0,upi:0,other:0,net:0});
+export const collectionTotals = (rows:any[]) => rows.reduce((t,p)=>{
+  if(p.kind==="Method Correction") return {cash:t.cash+Number(p.cashAmount||0),upi:t.upi+Number(p.upiAmount||0),other:t.other+Number(p.otherAmount||0),net:t.net};
+  const sign=p.kind==="Collection"?1:-1;
+  return {cash:t.cash+sign*Number(p.cashAmount||0),upi:t.upi+sign*Number(p.upiAmount||0),other:t.other+sign*Number(p.otherAmount||0),net:t.net+sign*Number(p.amount||0)};
+},{cash:0,upi:0,other:0,net:0});
 export async function saveHandover(date:string,openingCash:number,countedCash:number,expectedCash:number,note:string) {
   const uid=auth.currentUser?.uid;
   if (!uid || [openingCash,countedCash,expectedCash].some(v=>!Number.isFinite(v)) || openingCash<0 || countedCash<0) throw Error("Enter valid cash amounts.");

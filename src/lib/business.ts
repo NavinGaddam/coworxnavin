@@ -3,9 +3,9 @@ import { addDays, localToday } from "../pages/types";
 export const PASS_ALLOWANCES: Record<number, number> = { 10: 1, 20: 2, 30: 3 };
 export const DEFAULT_POLICY = {
   maxAdvanceDays: 60, businessStart: "09:00", businessEnd: "19:00",
-  minimumAdvancePercent: 50, balanceDueDays: 7, rescheduleWindowDays: 30,
+  minimumAdvancePercent: 100, balanceDueDays: 0, rescheduleWindowDays: 30,
   cancellationHours: 24, cancellationRefundPercent: 100,
-  weekly: {} as Record<string, any>, seasons: [] as any[], exceptions: [] as any[],
+  weekly: { 0: { closed: true } } as Record<string, any>, seasons: [] as any[], exceptions: [] as any[], calendar: {} as Record<string, any>,
 };
 export const money = (n: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(Number(n || 0));
 export const localTime = (now = new Date()) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
@@ -13,14 +13,16 @@ export const minutes = (t: string) => { const [h,m] = t.split(":").map(Number); 
 export const timeAt = (date: string, time: string) => new Date(`${date}T${time}:00+05:30`).getTime();
 export const weekday = (date: string) => new Date(`${date}T12:00:00Z`).getUTCDay();
 export function officeHours(date: string, raw: any = {}, holidays: any[] = []) {
-  const policy = { ...DEFAULT_POLICY, ...raw };
+  const policy = { ...DEFAULT_POLICY, ...raw, weekly: { ...DEFAULT_POLICY.weekly, ...(raw?.weekly || {}) } };
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(new Date(date).getTime()))return {start:policy.businessStart,end:policy.businessEnd,closed:true,reason:"Choose a valid date"};
   const season = [...(policy.seasons || [])].filter((s: any) => s.from <= date && date <= s.to).sort((a: any,b: any) => b.from.localeCompare(a.from))[0];
   const weekly = policy.weekly?.[weekday(date)] || {};
   const exception = (policy.exceptions || []).find((e: any) => e.date === date);
   const holiday = holidays.find(h => h.active !== false && h.date === date);
-  const hours = { start: policy.businessStart, end: policy.businessEnd, closed: false, ...weekly, ...season, ...exception };
-  return { start: hours.start, end: hours.end, closed: weekday(date) === 0 || Boolean(holiday) || Boolean(hours.closed), reason: weekday(date) === 0 ? "Sunday holiday" : holiday?.reason || hours.reason || "Closed" };
+  const calendar = policy.calendar?.[date];
+  const hours = { start: policy.businessStart, end: policy.businessEnd, closed: false, ...weekly, ...season, ...exception, ...(calendar || {}) };
+  const closed = Boolean(holiday) || Boolean(hours.closed);
+  return { start: hours.start, end: hours.end, closed, reason: holiday?.reason || hours.reason || (weekday(date) === 0 && closed ? "Sunday holiday" : "Closed") };
 }
 export function consecutiveDates(start: string, count: number, policy: any = {}, holidays: any[] = []) {
   if (!PASS_ALLOWANCES[count]) throw Error("Choose a 10, 20 or 30 working-day pass.");
@@ -35,11 +37,9 @@ export function consecutiveDates(start: string, count: number, policy: any = {},
 export function sessionHours(b: any, date: string) { return b.sessions?.[date] || { start: b.start || "09:00", end: b.end || "19:00" }; }
 export const bookingOn = (b: any, date: string) => b.dates?.length ? b.dates.includes(date) : b.date <= date && (b.endDate || b.date) >= date;
 export const balance = (b: any) => Math.max(0, Math.round((Number(b.total || 0) - Number(b.paymentReceived || 0)) * 100) / 100);
-export function paymentAccessError(b: any, date = localToday()) {
+export function paymentAccessError(b: any) {
   if (b.status !== "Confirmed") return "Payment must be verified before this booking is active.";
-  if (!b.passDays && balance(b) > 0) return "Full advance payment is required before entry.";
-  if (b.passDays && Number(b.paymentReceived || 0) < Number(b.minimumAdvance || 1)) return "The minimum pass advance has not been received.";
-  if (b.passDays && balance(b) > 0 && b.balanceDueDate && date > b.balanceDueDate) return "Pass payment is overdue. Collect the balance before entry.";
+  if (balance(b) > 0) return "Full advance payment is required before entry.";
   return "";
 }
 export function sessionState(b: any, now = new Date()) {
@@ -70,6 +70,6 @@ export function validatePolicy(p: any) {
   if (ranges.some(h => !h.closed && (!/^\d{2}:\d{2}$/.test(h.start) || !/^\d{2}:\d{2}$/.test(h.end) || minutes(h.start) < 0 || minutes(h.end) > 1439 || minutes(h.start) >= minutes(h.end)))) throw Error("Opening time must be before closing time on the same day.");
   if ((p.seasons || []).some((s:any) => !s.from || !s.to || s.to < s.from)) throw Error("Choose valid seasonal date ranges.");
   if ((p.exceptions || []).some((e:any) => !e.date)) throw Error("Choose a date for each exception.");
-  for (const [key,min,max] of [["minimumAdvancePercent",1,100],["balanceDueDays",0,30],["rescheduleWindowDays",1,90],["cancellationHours",0,168],["cancellationRefundPercent",0,100],["maxAdvanceDays",1,365]] as const)
+  for (const [key,min,max] of [["minimumAdvancePercent",100,100],["balanceDueDays",0,0],["rescheduleWindowDays",1,90],["cancellationHours",0,168],["cancellationRefundPercent",0,100],["maxAdvanceDays",1,365]] as const)
     if (!Number.isFinite(Number(p[key])) || Number(p[key]) < min || Number(p[key]) > max) throw Error(`Enter a valid ${key.replace(/([A-Z])/g," $1").toLowerCase()}.`);
 }

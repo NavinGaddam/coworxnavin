@@ -25,6 +25,7 @@ import studioImage from "../assets/workspace-studio.jpg";
 import teamImage from "../assets/workspace-team.jpg";
 import meetingImage from "../assets/lounge.webp";
 import Dialog from "../components/Dialog";
+import { HomepagePossibilities } from "../components/HomepagePossibilities";
 import { localToday, Space } from "./types";
 const Pano360 = lazy(() => import("./Pano360"));
 const greeting = () => {
@@ -163,6 +164,12 @@ export default function CustomerHome({
             </button>
           </div>
         ))}
+      {hours.closed && (
+        <div className="homeNotice closureNotice">
+          <Clock3 size={17} />
+          <div><b>Coworx Central is closed today</b><span>{hours.reason || "Office closed"}. Desks, rooms and service orders are unavailable today.</span></div>
+        </div>
+      )}
       {user ? (
         <>
           <section className="memberWelcome">
@@ -362,47 +369,7 @@ export default function CustomerHome({
           <Clock3 /> 9 AM–7 PM
         </span>
       </div>
-      <section className="homeSpaces" id="spaces">
-        <div className="sectionHeading">
-          <div>
-            <span className="eyebrow">SPACE TO DO YOUR THING</span>
-            <h2>One place. So many possibilities.</h2>
-          </div>
-          <p>
-            From solo focus to team breakthroughs,
-            <br />
-            choose the space that fits your day.
-          </p>
-        </div>
-        <div className="workspaceCards">
-          {spaces.map(([s, title, label, Icon, img, price], i) => (
-            <article key={s}>
-              <button
-                className="workspaceImage"
-                onClick={() => book(s)}
-                aria-label={`Book ${label}`}
-              >
-                <img src={img} alt={label} loading="lazy" />
-                <span className="spaceNumber">0{i + 1}</span>
-                <span className="spaceArrow">
-                  <ArrowUpRight size={19} />
-                </span>
-              </button>
-              <div className="workspaceCardCopy">
-                <span className="spaceType">
-                  <Icon size={15} />
-                  {label}
-                </span>
-                <h3>{title}</h3>
-                <button className="spacePrice" onClick={() => book(s)}>
-                  {price}
-                  <ArrowRight size={17} />
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+      <HomepagePossibilities fallbackImages={{desk:desksImage,meeting:meetingImage,conference:conferenceImage,podcast:studioImage}} />
       <section className="homeStory">
         <div className="storyImage">
           <img

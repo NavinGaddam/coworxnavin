@@ -1,0 +1,71 @@
+/* Final enhancement layer: deliberately loaded last. */
+
+/* Booking-time tea/coffee/printing moved to post-check-in Service Orders. */
+.bookingExtras .addonGrid { display: none !important; }
+
+/* Premium / regular desk administration */
+.premiumAwareGrid { grid-template-columns: repeat(auto-fit,minmax(120px,1fr)); margin: 14px 0; }
+.premiumDeskTag,.regularDeskTag { display:flex; flex-direction:column; gap:5px; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--text); }
+.premiumDeskTag { box-shadow: inset 0 0 0 2px rgba(255,116,32,.5); }
+.premiumDeskTag small { font-weight:800; color:var(--accent); }
+.regularDeskTag small { color:var(--muted); }
+.premiumDeskTag input[type=checkbox],.regularDeskTag input[type=checkbox] { width:18px; height:18px; }
+
+/* Service orders */
+.serviceOrderPanel,.staffServiceOrders { margin:0 0 20px; padding:20px; border:1px solid var(--line); border-radius:18px; background:var(--card); color:var(--text); }
+.servicePrinting { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 10px; border:1px solid var(--line); border-radius:12px; background:var(--soft); }
+.servicePrinting input { width:72px; }
+.serviceOrderRow { align-items:flex-start; }
+.serviceOrderRow .crmButtons { flex-wrap:wrap; }
+.serviceOrderRow input { min-width:160px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; background:var(--soft); color:var(--text); }
+
+/* Light mode must never inherit hard-coded dark panels. */
+:root:not([data-theme="dark"]) .surface,
+:root:not([data-theme="dark"]) .panel,
+:root:not([data-theme="dark"]) .opsPanel,
+:root:not([data-theme="dark"]) .reservationCard,
+:root:not([data-theme="dark"]) .customerPicker,
+:root:not([data-theme="dark"]) .settingsContent > section,
+:root:not([data-theme="dark"]) .collectionMetrics > div,
+:root:not([data-theme="dark"]) .serviceOrderPanel,
+:root:not([data-theme="dark"]) .staffServiceOrders,
+:root:not([data-theme="dark"]) .catalogItem,
+:root:not([data-theme="dark"]) .guestRow,
+:root:not([data-theme="dark"]) .crmRow,
+:root:not([data-theme="dark"]) .nextPassCard,
+:root:not([data-theme="dark"]) .memberOffer,
+:root:not([data-theme="dark"]) .offerCard {
+  background-color: var(--card) !important;
+  color: var(--text) !important;
+  border-color: var(--line) !important;
+}
+:root:not([data-theme="dark"]) input,
+:root:not([data-theme="dark"]) select,
+:root:not([data-theme="dark"]) textarea,
+:root:not([data-theme="dark"]) .dpTrigger,
+:root:not([data-theme="dark"]) .commandInput,
+:root:not([data-theme="dark"]) .searchInput {
+  background-color: var(--soft) !important;
+  color: var(--text) !important;
+  border-color: var(--line) !important;
+}
+:root:not([data-theme="dark"]) .statePill:not(.good):not(.warn),
+:root:not([data-theme="dark"]) .noticeBox,
+:root:not([data-theme="dark"]) .holdNote,
+:root:not([data-theme="dark"]) .workingHoursBanner,
+:root:not([data-theme="dark"]) .memberAvailability {
+  background-color: var(--soft) !important;
+  color: var(--text) !important;
+}
+:root:not([data-theme="dark"]) .muted,
+:root:not([data-theme="dark"]) small,
+:root:not([data-theme="dark"]) .opsNote { color:var(--muted); }
+
+/* Homepage notices remain visually first and prominent. */
+.cxHome > .homeNotice:first-child { margin-top:0; }
+.homeNotice { position:relative; z-index:2; }
+
+@media(max-width:700px){
+  .premiumAwareGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .servicePrinting { width:100%; }
+}
