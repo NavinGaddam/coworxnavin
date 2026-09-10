@@ -1,6 +1,7 @@
 import Dialog from "../components/Dialog";
 import CustomerPicker from "../components/CustomerPicker";
 import DeskRates from "../components/DeskRates";
+import EnquiryCRM from "../components/EnquiryCRM";
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
@@ -1492,146 +1493,7 @@ export default function OperationsSuite({
         </section>
       )}
       {tab === "enquiries" && can("enquiriesManage") && (
-        <div className="opsTwo">
-          <section className="opsPanel">
-            <div className="panelHead">
-              <div>
-                <span className="eyebrow">LOG ENQUIRY</span>
-                <h3>New enquiry</h3>
-              </div>
-              <UserSearch />
-            </div>
-            <div className="stackForm">
-              <input
-                value={enquiryForm.name}
-                onChange={(e) =>
-                  setEnquiryForm({ ...enquiryForm, name: e.target.value })
-                }
-                placeholder="Name"
-              />
-              <input
-                value={enquiryForm.phone}
-                onChange={(e) =>
-                  setEnquiryForm({ ...enquiryForm, phone: e.target.value })
-                }
-                placeholder="Phone"
-              />
-              <input
-                value={enquiryForm.email}
-                onChange={(e) =>
-                  setEnquiryForm({ ...enquiryForm, email: e.target.value })
-                }
-                placeholder="Email"
-              />
-              <select
-                value={enquiryForm.interest}
-                onChange={(e) =>
-                  setEnquiryForm({ ...enquiryForm, interest: e.target.value })
-                }
-              >
-                <option value="desk">Desk</option>
-                <option value="meeting">Meeting Room</option>
-                <option value="conference">Conference Room</option>
-                <option value="podcast">Creator Studio</option>
-                <option value="other">Other</option>
-              </select>
-              <textarea
-                value={enquiryForm.notes}
-                onChange={(e) =>
-                  setEnquiryForm({ ...enquiryForm, notes: e.target.value })
-                }
-                placeholder="Notes"
-              />
-              <button className="primary" onClick={addEnquiry}>
-                <Plus /> Log enquiry
-              </button>
-            </div>
-            <div className="catalogList">
-              {enquiries.map((en: any) => (
-                <div className="catalogItem enquiryItem" key={en.id}>
-                  <div>
-                    <b>{en.name}</b>
-                    <small>
-                      {en.phone || en.email || "No contact"} ·{" "}
-                      {en.interest || "General"}
-                      {en.notes ? ` · ${en.notes}` : ""}
-                    </small>
-                  </div>
-                  <select
-                    value={en.status || "New"}
-                    onChange={(e) =>
-                      updateEnquiry(
-                        en.id,
-                        { status: e.target.value },
-                        uid,
-                      ).catch((err: any) =>
-                        onFlash(err.message || "Could not update enquiry"),
-                      )
-                    }
-                  >
-                    <option>New</option>
-                    <option>Contacted</option>
-                    <option>Converted</option>
-                    <option>Closed</option>
-                  </select>
-                </div>
-              ))}
-              {!enquiries.length && (
-                <p className="opsNote">No manual enquiries logged yet.</p>
-              )}
-            </div>
-          </section>
-          <section className="opsPanel">
-            <div className="panelHead">
-              <div>
-                <span className="eyebrow">AUTO-DETECTED</span>
-                <h3>Signed in, never booked</h3>
-                <small>
-                  Users who created an account but haven't made a booking yet.
-                </small>
-              </div>
-            </div>
-            <div className="catalogList">
-              {autoEnquiries.map((u: any) => (
-                <div className="catalogItem" key={u.uid}>
-                  <div>
-                    <b>{u.name || u.email}</b>
-                    <small>
-                      {u.email} · {u.phone || "No phone"}
-                    </small>
-                  </div>
-                  <button
-                    className="ghost small"
-                    onClick={() =>
-                      createEnquiry(
-                        {
-                          name: u.name || u.email,
-                          email: u.email,
-                          phone: u.phone || "",
-                          interest: "other",
-                          notes: "Auto-detected: signed in, never booked",
-                          source: "Signup",
-                        },
-                        uid,
-                      )
-                        .then(() => onFlash("Logged as enquiry."))
-                        .catch((e: any) =>
-                          onFlash(e.message || "Could not log enquiry"),
-                        )
-                    }
-                  >
-                    <Plus /> Log as enquiry
-                  </button>
-                </div>
-              ))}
-              {!autoEnquiries.length && (
-                <p className="opsNote">
-                  Every signed-in user has at least one booking.
-                </p>
-              )}
-            </div>
-          </section>
-        </div>
+        <EnquiryCRM actorUid={uid} onFlash={onFlash} />
       )}
       {tab === "resources" && can("resourcesManage") && (
         <div className="opsTwo">
