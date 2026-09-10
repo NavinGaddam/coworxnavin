@@ -1439,6 +1439,7 @@ export default function OperationsSuite({
             {!banners.length && <p className="opsNote">No banners yet.</p>}
           </div>
         </section>
+        </>
       )}
       {tab === "wednesday" && can("pricingManage") && (
         <section className="opsPanel">
@@ -1494,7 +1495,6 @@ export default function OperationsSuite({
             </button>
           </div>
         </section>
-        </>
       )}
       {tab === "enquiries" && can("enquiriesManage") && (
         <EnquiryCRM actorUid={uid} onFlash={onFlash} />
