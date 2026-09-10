@@ -12,3 +12,4 @@ for old,new in repls.items():
         raise SystemExit('missing test patch target: '+old[:80])
     s=s.replace(old,new,1)
 p.write_text(s)
+# trigger one-time test migration workflow
