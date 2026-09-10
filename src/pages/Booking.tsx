@@ -6,7 +6,7 @@ import { collectPayment, emptyTender, tenderTotal } from "../lib/finance";
 import { DEFAULT_POLICY, consecutiveDates, officeHours, PASS_ALLOWANCES, minutes } from "../lib/business";
 import CustomerPicker from "../components/CustomerPicker";
 import { watchSetting, watchLocksRange } from "../lib/platform";
-import { validEmail, validPhone } from "../lib/customer";
+import { normalizePhone, validEmail, validPhone } from "../lib/customer";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -107,6 +107,12 @@ const freeHours = (locks: any[], space: string, start: string, closing = BUSINES
     n++;
   }
   return n;
+};
+const validDobValue = (value: unknown) => {
+  const dob = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || dob < "1900-01-01" || dob > localToday()) return false;
+  const parsed = new Date(`${dob}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === dob;
 };
 
 export default function Booking(p: any) {
@@ -403,6 +409,15 @@ export default function Booking(p: any) {
   const valid = isDesk
     ? selected.length > 0
     : !startBusy && roomAvailable > 0 && duration <= roomAvailable;
+  const profileProfession = profile.profession === "Other"
+    ? String(profile.otherProfession || "").trim()
+    : String(profile.profession || "").trim();
+  const userDetailsReady = p.staffBooking || Boolean(
+    validPhone(profile.mobile) &&
+    String(profile.gender || "").trim() &&
+    validDobValue(profile.dob) &&
+    profileProfession
+  );
   const openModal = () => {
     if (inventoryLoading || loadError)
       return setMessage(loadError || "Availability is still loading.");
@@ -451,22 +466,10 @@ export default function Booking(p: any) {
       void submit();
       return;
     }
-    if (
-      savedMobile.replace(/\D/g, "").length >= 10 &&
-      savedProfession &&
-      savedProfession !== "Other"
-    ) {
-      submit({
-        mobile: savedMobile,
-        gender: p.myProfile?.gender || profile.gender || "",
-        dob: p.myProfile?.dob || profile.dob || "",
-        profession: savedProfession,
-        otherProfession: "",
-      });
-      return;
+    if (!userDetailsReady) {
+      return setMessage("Complete all customer details before requesting on WhatsApp: mobile, gender, date of birth and profession.");
     }
-    setProfile((x) => ({ ...x, mobile: p.phoneNumber || x.mobile }));
-    setModal(true);
+    void submit();
   };
   const submit = async (overrideProfile?: any) => {
     if (submitLock.current) return;
@@ -482,7 +485,7 @@ export default function Booking(p: any) {
           profession: selectedCustomer.profession || "",
         }
       : overrideProfile || profile;
-    const phone = String(useProfile.mobile || "").trim();
+    const phone = normalizePhone(useProfile.mobile || "");
     const profession =
       useProfile.profession === "Other"
         ? String(useProfile.otherProfession || "").trim()
@@ -494,9 +497,13 @@ export default function Booking(p: any) {
       .toLowerCase();
     if (!validEmail(email)) return setMessage("Enter a valid customer email.");
     if (!validPhone(phone))
-      return setMessage("Please enter a valid mobile number.");
+      return setMessage("Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9.");
+    if (!p.staffBooking && !String(useProfile.gender || "").trim())
+      return setMessage("Select your gender before requesting on WhatsApp.");
+    if (!p.staffBooking && !validDobValue(useProfile.dob))
+      return setMessage("Enter a valid date of birth before requesting on WhatsApp.");
     if (!profession && !p.staffBooking)
-      return setMessage("Please enter your profession.");
+      return setMessage("Select your profession before requesting on WhatsApp.");
     submitLock.current = true;
     setSubmitting(true);
     setMessage("");
@@ -799,6 +806,14 @@ export default function Booking(p: any) {
               locks={locks}
             />
           )}
+          {!p.staffBooking && (
+            <CustomerDetailsPanel
+              user={p.user}
+              profile={profile}
+              setProfile={setProfile}
+              ready={userDetailsReady}
+            />
+          )}
           <Extras
             qty={addonQty}
             setQty={setAddonQty}
@@ -829,8 +844,9 @@ export default function Booking(p: any) {
           canConfirm={p.canConfirm}
           busy={submitting || inventoryLoading}
           customerReady={
-            !p.staffBooking ||
-            Boolean(selectedCustomer?.uid && !selectedCustomer.blocked)
+            p.staffBooking
+              ? Boolean(selectedCustomer?.uid && !selectedCustomer.blocked)
+              : userDetailsReady
           }
           title={getTitle(p.space)}
           date={p.date}
@@ -1167,6 +1183,84 @@ function setDuration(p: any, v: number) {
   else if (p.space === "conference") p.setConfDuration(v);
   else p.setPodDuration(v);
 }
+function CustomerDetailsPanel({ user, profile, setProfile, ready }: any) {
+  const professions = [
+    "IT Professional",
+    "Developer",
+    "Tester",
+    "Marketing Team",
+    "Student",
+    "Designer",
+    "Consultant",
+    "Business",
+    "Other",
+  ];
+  return (
+    <section className="bookingExtras panel customerDetailsPanel">
+      <div className="extrasHead">
+        <div>
+          <span className="eyebrow">CUSTOMER DETAILS · REQUIRED</span>
+          <h3>Complete your details before WhatsApp</h3>
+          <small>All fields below are compulsory. Request on WhatsApp is enabled only after they are valid.</small>
+        </div>
+        {ready ? <CheckCircle2 /> : <UserPlus />}
+      </div>
+      <div className="fieldGrid">
+        <label>Name<input value={user?.displayName || ""} readOnly /></label>
+        <label>Email<input value={user?.email || ""} readOnly /></label>
+        <label>
+          Mobile number *
+          <input
+            type="tel"
+            inputMode="numeric"
+            autoComplete="tel"
+            maxLength={10}
+            placeholder="9876543210"
+            value={normalizePhone(profile.mobile || "")}
+            onChange={(e) => setProfile({ ...profile, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) })}
+          />
+          <small>10 digits, starting with 6, 7, 8 or 9.</small>
+        </label>
+        <label>
+          Gender *
+          <select value={profile.gender || ""} onChange={(e) => setProfile({ ...profile, gender: e.target.value })}>
+            <option value="">Select gender</option>
+            <option>Male</option>
+            <option>Female</option>
+            <option>Other</option>
+            <option>Prefer not to say</option>
+          </select>
+        </label>
+        <div className="customerDateField">
+          <DatePicker
+            label="Date of birth *"
+            value={profile.dob || ""}
+            min="1900-01-01"
+            max={localToday()}
+            placeholder="Choose date of birth"
+            onChange={(dob) => setProfile({ ...profile, dob })}
+          />
+        </div>
+        <label>
+          Profession *
+          <select value={profile.profession || ""} onChange={(e) => setProfile({ ...profile, profession: e.target.value, otherProfession: e.target.value === "Other" ? profile.otherProfession : "" })}>
+            <option value="">Select profession</option>
+            {professions.map((x) => <option key={x}>{x}</option>)}
+          </select>
+        </label>
+        {profile.profession === "Other" && (
+          <label className="full">
+            Profession details *
+            <input value={profile.otherProfession || ""} onChange={(e) => setProfile({ ...profile, otherProfession: e.target.value })} placeholder="e.g. Architect, HR, Photographer" />
+          </label>
+        )}
+      </div>
+      <p className={ready ? "goodText" : "noticeBox"}>
+        {ready ? "All required customer details are complete. You can now request on WhatsApp." : "Complete every required field to enable Request on WhatsApp."}
+      </p>
+    </section>
+  );
+}
 function Extras({
   qty,
   setQty,
@@ -1402,7 +1496,9 @@ function Summary({
         <span>
           {staffBooking
             ? "Save the customer, then collect payment before confirming the booking."
-            : "Online requests reserve the selected resource for 15 minutes while payment is completed."}
+            : customerReady
+              ? "Customer details verified. Online requests reserve the selected resource for 15 minutes while payment is completed."
+              : "Complete all required customer details before requesting on WhatsApp."}
         </span>
       </div>
       {staffBooking&&<div className={`summaryPaymentState ${paymentReady?"ready":""}`}><span>{paymentReady?"Payment verified":"Payment required"}</span><strong>₹{Number(payingNow||0).toLocaleString("en-IN")}</strong></div>}
@@ -1419,6 +1515,10 @@ function Summary({
           <>
             <CheckCircle2 />{" "}
             {canConfirm ? "Receive payment & confirm" : "Payment permission required"}
+          </>
+        ) : !customerReady ? (
+          <>
+            <UserPlus /> Complete customer details first
           </>
         ) : (
           <>
