@@ -16,10 +16,10 @@ export async function saveServicePricing(pricing:ServicePricing){
 }
 
 export function watchMyServiceOrders(uid:string,cb:(rows:any[])=>void,onError?:(e:any)=>void){
-  return onSnapshot(query(collection(db,"serviceOrders"),where("userId","==",uid)),s=>cb(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0))),onError);
+  return onSnapshot(query(collection(db,"serviceOrders"),where("userId","==",uid)),s=>{const rows:any[]=s.docs.map(d=>({id:d.id,...d.data()}));cb(rows.sort((a:any,b:any)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0)));},onError);
 }
 export function watchAllServiceOrders(cb:(rows:any[])=>void,onError?:(e:any)=>void){
-  return onSnapshot(collection(db,"serviceOrders"),s=>cb(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0))),onError);
+  return onSnapshot(collection(db,"serviceOrders"),s=>{const rows:any[]=s.docs.map(d=>({id:d.id,...d.data()}));cb(rows.sort((a:any,b:any)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0)));},onError);
 }
 
 export async function createServiceOrder(bookingId:string,item:"Tea"|"Coffee"|"Printing",qty=1){
