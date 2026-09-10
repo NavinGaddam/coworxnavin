@@ -19,7 +19,7 @@ export function attendanceError(b: any, date: string, action: "in" | "out", now 
   if (!bookingOn(b,date))
     return "This booking is not valid today.";
   if (action === "in") {
-    const paymentError=paymentAccessError(b,date);
+    const paymentError=paymentAccessError(b);
     if(paymentError) return paymentError;
     const h=sessionHours(b,date);
     if(now<timeAt(date,h.start) || now>=timeAt(date,h.end)) return "Check-in is available only during the booked session.";
